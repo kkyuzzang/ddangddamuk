@@ -15,6 +15,7 @@ export interface Player {
   coins: number;
   lands: number[]; // Array of Land IDs
   isEliminated: boolean;
+  lastPing?: number; // For connection monitoring
   
   // Round specific state
   lastAnswerCorrect?: boolean;
@@ -33,6 +34,8 @@ export interface Land {
 export interface CombatEvent {
   landId: number;
   type: 'CONQUERED' | 'DEFENDED' | 'FAILED_ATTACK' | 'PIERCED';
+  attackerName?: string;
+  defenderName?: string;
 }
 
 export interface GameState {
@@ -51,7 +54,7 @@ export interface GameState {
 }
 
 export interface BroadcastMessage {
-  type: 'STATE_UPDATE' | 'PLAYER_JOIN' | 'PLAYER_ACTION' | 'HOST_ACTION';
+  type: 'STATE_UPDATE' | 'PLAYER_JOIN' | 'PLAYER_ACTION' | 'HOST_ACTION' | 'HEARTBEAT' | 'HEARTBEAT_ACK';
   payload: any;
 }
 

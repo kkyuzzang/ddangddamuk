@@ -45,13 +45,26 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
   // 1. Reset Defenses & Locks from previous rounds visual
   nextState.lands.forEach(l => l.isLocked = false);
 
-  // 2. Process Shop & Defense Declarations first
+  // 2. Validate Actions based on Quiz Result
   nextState.players.forEach(p => {
-    if (p.selectedAction === 'DEFEND') {
-      p.isDefending = true;
-      messages.push(`${p.name}님이 방어 태세를 갖췄습니다!`);
+    // Rule Enforcement
+    if (p.lastAnswerCorrect) {
+        // Correct: Can Defend OR Attack up to 2.
+        // Logic handled in UI, but strictly: if defending, set flag.
+        if (p.selectedAction === 'DEFEND') {
+             p.isDefending = true;
+             messages.push(`🛡️ ${p.name}: 정답 보너스로 방어 태세!`);
+        }
     } else {
-      p.isDefending = false;
+        // Incorrect: Cannot Defend. Max 1 Attack.
+        p.isDefending = false; 
+        if (p.selectedAction === 'DEFEND') {
+            p.selectedAction = 'WAITING'; // Force cancel defense if incorrect
+            messages.push(`❌ ${p.name}: 오답이라 방어 실패.`);
+        }
+        if (p.pendingAttacks.length > 1) {
+            p.pendingAttacks = [p.pendingAttacks[0]]; // Force reduce attacks to 1
+        }
     }
 
     // Shop: Buy Land (Revival or Expansion)
@@ -63,11 +76,11 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
            const target = emptyLands[Math.floor(Math.random() * emptyLands.length)];
            target.ownerId = p.id;
            p.coins -= COIN_COSTS.BUY_LAND;
-           messages.push(`${p.name}님이 빈 땅(Land #${target.id + 1})을 구매했습니다!`);
-           combatEvents.push({ landId: target.id, type: 'CONQUERED' });
+           messages.push(`💰 ${p.name}: 빈 땅(No.${target.id + 1}) 구매 성공!`);
+           combatEvents.push({ landId: target.id, type: 'CONQUERED', attackerName: p.name });
         } else {
-           messages.push(`${p.name}님이 땅을 구매하려 했으나 빈 땅이 없습니다.`);
-           p.coins += 0; 
+           messages.push(`💸 ${p.name}: 빈 땅이 없어 구매 취소 (코인 반환).`);
+           // Refund implies simply not deducting
         }
       }
     }
@@ -88,7 +101,7 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
     // Deduct coins for pierce if it was active
     if (attacker.pendingShop === 'PIERCE' && attacker.coins >= COIN_COSTS.PIERCE_DEFENSE) {
        attacker.coins -= COIN_COSTS.PIERCE_DEFENSE;
-       messages.push(`${attacker.name}님이 [방어 관통] 아이템을 사용했습니다!`);
+       messages.push(`🗡️ ${attacker.name}: [방어 관통] 아이템 사용!`);
     }
   });
 
@@ -109,12 +122,12 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
       // Check defense
       if (currentOwner.isDefending) {
         if (atk.hasPierce) {
-          messages.push(`땅 #${landId + 1}에 대한 공격이 방어를 뚫었습니다!`);
-          combatEvents.push({ landId, type: 'PIERCED' });
+          messages.push(`💥 ${landId + 1}번 땅: 방어 관통!`);
+          combatEvents.push({ landId, type: 'PIERCED', defenderName: currentOwner.name });
           return true;
         } else {
-          messages.push(`땅 #${landId + 1} 공격이 ${currentOwner.name}님의 방어에 막혔습니다.`);
-          combatEvents.push({ landId, type: 'DEFENDED' });
+          messages.push(`🛡️ ${landId + 1}번 땅: ${currentOwner.name}님이 방어 성공!`);
+          combatEvents.push({ landId, type: 'DEFENDED', defenderName: currentOwner.name });
           return false;
         }
       }
@@ -131,12 +144,11 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
         // Change ownership
         const oldOwnerName = currentOwner ? currentOwner.name : "주인 없음";
         land.ownerId = winnerId;
-        messages.push(`${winner.name}님이 ${oldOwnerName}의 땅 #${landId + 1}을(를) 정복했습니다!`);
-        combatEvents.push({ landId, type: 'CONQUERED' });
+        messages.push(`🚩 ${winner.name}님이 ${oldOwnerName}의 땅(${landId + 1})을 점령!`);
+        combatEvents.push({ landId, type: 'CONQUERED', attackerName: winner.name, defenderName: currentOwner?.name });
       }
     } else if (attacks.length > 0 && !combatEvents.find(e => e.landId === landId && e.type === 'DEFENDED')) {
-       // All attacks were invalid (e.g. self attacks) or blocked silently?
-       // Usually covered by 'DEFENDED', but if multiple people attacked and all blocked, we handled it.
+       // Silent failure (e.g. owner attacked own land without logic handling, or defense blocked all silently)
     }
   });
 

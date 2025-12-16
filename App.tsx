@@ -8,6 +8,69 @@ import { Button } from './components/Button';
 
 // -- Sub-Components --
 
+const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GamePhase }) => {
+    return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                <h3 className="font-bold text-gray-700">📜 학생 현황판</h3>
+                <span className="text-xs text-gray-500 font-mono">총 {players.length}명</span>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-500 font-medium">
+                        <tr>
+                            <th className="px-4 py-2">플레이어</th>
+                            <th className="px-4 py-2 text-center">땅 / 코인</th>
+                            <th className="px-4 py-2 text-center">퀴즈 결과</th>
+                            <th className="px-4 py-2 text-center">행동</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {players.map(p => {
+                            let actionText = '-';
+                            if (phase === 'ACTION_SELECT' || phase === 'ROUND_RESULT') {
+                                if (p.selectedAction === 'DEFEND') actionText = '🛡️ 방어';
+                                else if (p.pendingAttacks.length > 0) actionText = `⚔️ 공격 (${p.pendingAttacks.length})`;
+                                else if (p.pendingShop === 'BUY_LAND') actionText = '💰 땅 구매';
+                                else actionText = '대기중';
+                            }
+                            
+                            return (
+                                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-4 py-3 flex items-center gap-2">
+                                        <div className={`w-8 h-8 rounded-full ${p.color} flex items-center justify-center shadow-sm`}>
+                                            {p.avatar}
+                                        </div>
+                                        <span className={`font-bold ${p.isEliminated ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                                            {p.name}
+                                        </span>
+                                        {p.isEliminated && <span className="text-xs bg-red-100 text-red-600 px-1 rounded">탈락</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        <div className="font-mono">
+                                            <span className="text-indigo-600 font-bold">{p.lands.length}땅</span>
+                                            <span className="mx-2 text-gray-300">|</span>
+                                            <span className="text-yellow-600 font-bold">{p.coins}💰</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        {p.lastAnswerCorrect === true && <span className="inline-block bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">⭕ 정답 (+1💰)</span>}
+                                        {p.lastAnswerCorrect === false && <span className="inline-block bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs font-bold">❌ 오답</span>}
+                                        {p.lastAnswerCorrect === undefined && <span className="text-gray-400">-</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-center font-bold text-gray-600">
+                                        {actionText}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
 const LobbyView = ({ 
   isHost, 
   players, 
@@ -185,13 +248,18 @@ const App: React.FC = () => {
   const connectionsRef = useRef<DataConnection[]>([]); // For Host: list of student connections
   const hostConnRef = useRef<DataConnection | null>(null); // For Guest: connection to host
   
-  // Timer Ref
+  // Refs for logic that doesn't need re-render
+  const lastPingMap = useRef<Record<string, number>>({});
+  
+  // Timer Refs
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
       if (peerRef.current) {
         peerRef.current.destroy();
         peerRef.current = null;
@@ -213,6 +281,53 @@ const App: React.FC = () => {
     }
   };
 
+  // Heartbeat Logic
+  const startHeartbeat = (isHost: boolean) => {
+    if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+
+    heartbeatIntervalRef.current = setInterval(() => {
+        if (isHost) {
+            // Host: Send PING to all, Remove dead players
+            const now = Date.now();
+            
+            // 1. Prune disconnected players (timeout 8s)
+            setGameState(prev => {
+                const activePlayers = prev.players.filter(p => {
+                    // Always keep host if in list (though host usually isn't in players list in this implementation logic unless pushed)
+                    // Actually, host is separate. 
+                    // Check if player has pinged recently.
+                    // First 5 seconds of connection are grace period
+                    const lastPing = lastPingMap.current[p.id];
+                    if (!lastPing) return true; // New player grace
+                    if (now - lastPing > 8000) {
+                        console.log(`Removing inactive player: ${p.name} (${p.id})`);
+                        // Close connection if exists
+                        const conn = connectionsRef.current.find(c => c.metadata?.playerId === p.id);
+                        if (conn) conn.close();
+                        return false;
+                    }
+                    return true;
+                });
+                
+                if (activePlayers.length !== prev.players.length) {
+                    return { ...prev, players: activePlayers };
+                }
+                return prev;
+            });
+
+            // 2. Send PING
+            connectionsRef.current.forEach(conn => {
+                if (conn.open) {
+                    conn.send({ type: 'HEARTBEAT', payload: null });
+                }
+            });
+
+        } else {
+            // Guest: Check if Host is alive (optional, mostly handled by conn.on('close'))
+        }
+    }, 2000);
+  };
+
   // HOST: Start Server
   const initializeHost = (code: string) => {
     if (peerRef.current) peerRef.current.destroy();
@@ -226,6 +341,7 @@ const App: React.FC = () => {
         console.log('Host ID Opened:', id);
         setConnectionStatus('방이 생성되었습니다! 학생들이 입장할 수 있습니다.');
         peerRef.current = peer;
+        startHeartbeat(true);
       });
 
       peer.on('connection', (conn) => {
@@ -233,7 +349,7 @@ const App: React.FC = () => {
         connectionsRef.current.push(conn);
 
         conn.on('data', (data: any) => {
-          handleMessage(data);
+          handleMessage(data, conn);
         });
 
         conn.on('close', () => {
@@ -247,7 +363,6 @@ const App: React.FC = () => {
 
         conn.on('open', () => {
           console.log('Connection established, sending state to:', conn.peer);
-          // Send current state with a slight delay to ensure connection is stable
           setTimeout(() => {
              conn.send({ type: 'STATE_UPDATE', payload: gameState });
           }, 100);
@@ -287,7 +402,8 @@ const App: React.FC = () => {
       setConnectionStatus('서버 접속 성공. 선생님 방에 연결 시도...');
       
       const conn = peer.connect(getPeerId(code), {
-        reliable: true
+        reliable: true,
+        metadata: { playerId: player.id }
       });
       
       conn.on('open', () => {
@@ -305,6 +421,9 @@ const App: React.FC = () => {
             setActionLocked(false);
             setSelectedLandIds([]);
           }
+        } else if (data && data.type === 'HEARTBEAT') {
+            // Respond to ping
+            conn.send({ type: 'HEARTBEAT_ACK', payload: { playerId: player.id } });
         }
       });
 
@@ -349,15 +468,26 @@ const App: React.FC = () => {
 
 
   // -- Message Handling (Host Only) --
-  const handleMessage = (msg: BroadcastMessage) => {
+  const handleMessage = (msg: BroadcastMessage, conn?: DataConnection) => {
     if (msg.type === 'PLAYER_JOIN') {
-      handlePlayerJoin(msg.payload);
+      handlePlayerJoin(msg.payload, conn);
     } else if (msg.type === 'PLAYER_ACTION') {
       handlePlayerAction(msg.payload);
+    } else if (msg.type === 'HEARTBEAT_ACK') {
+        const pid = msg.payload.playerId;
+        if (pid) {
+            lastPingMap.current[pid] = Date.now();
+        }
     }
   };
 
-  const handlePlayerJoin = (newPlayer: Player) => {
+  const handlePlayerJoin = (newPlayer: Player, conn?: DataConnection) => {
+    // Store metadata on connection for cleanup
+    if (conn) {
+        conn.metadata = { playerId: newPlayer.id };
+    }
+    lastPingMap.current[newPlayer.id] = Date.now();
+
     setGameState(prev => {
       const existingPlayerIndex = prev.players.findIndex(p => p.name === newPlayer.name);
       
@@ -661,7 +791,14 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex flex-col h-full">
+            {/* Player Status - Visible during Quiz/Action/Result */}
+            {gameState.phase !== 'LOBBY' && gameState.phase !== 'GAME_OVER' && (
+                <div className="flex-1 overflow-y-auto max-h-[40vh] lg:max-h-[50vh]">
+                    <PlayerStatusTable players={gameState.players} phase={gameState.phase} />
+                </div>
+            )}
+
           <div className="bg-white p-4 rounded-xl shadow-sm h-full">
             <h3 className="font-bold mb-4 text-lg text-indigo-800">게임 설정 및 제어</h3>
             {gameState.phase === 'LOBBY' && (
@@ -876,7 +1013,7 @@ const App: React.FC = () => {
           {!actionLocked ? (
             <div className="space-y-6">
               <div className="bg-blue-50 p-4 rounded text-center text-sm text-blue-800 font-bold mb-2">
-                 {me.lastAnswerCorrect ? "정답을 맞춰서 공격 기회가 2회입니다!" : "오답이라 공격 기회가 1회입니다."}
+                 {me.lastAnswerCorrect ? "정답 보너스: 공격 2회 또는 방어 가능!" : "오답 페널티: 공격 1회만 가능 (방어 불가)"}
               </div>
 
               {/* Shop Section */}
