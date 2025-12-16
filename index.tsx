@@ -8,8 +8,7 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+// React.StrictMode removed to ensure reliable P2P connection initialization
 root.render(
-  <React.StrictMode>
     <App />
-  </React.StrictMode>
 );

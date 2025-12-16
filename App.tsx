@@ -1,21 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Peer, DataConnection } from 'peerjs';
 import { GameState, Player, BroadcastMessage, GamePhase, Quiz, AVATARS, COLORS } from './types';
 import { DEFAULT_QUIZZES, COIN_COSTS } from './constants';
 import { generateMap, assignInitialLands, resolveTurn } from './utils/gameLogic';
 import { GameMap } from './components/GameMap';
 import { Button } from './components/Button';
 
-// CHANGE THIS TO YOUR CLOUDFLARE WORKER URL AFTER DEPLOYMENT
-// Local dev default: 'ws://localhost:8787/ws'
-const WS_BASE_URL = 'ws://localhost:8787/ws'; 
-
 // -- Sub-Components --
 
-const LobbyView = ({ isHost, players, onStart, roomCode }: { isHost: boolean, players: Player[], onStart: () => void, roomCode: string }) => (
+const LobbyView = ({ isHost, players, onStart, roomCode, connectionStatus }: { isHost: boolean, players: Player[], onStart: () => void, roomCode: string, connectionStatus: string }) => (
   <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-8">
     <div className="text-center">
       <h2 className="text-4xl font-extrabold text-indigo-900 mb-2 tracking-tight">방 코드: <span className="text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border-2 border-indigo-100">{roomCode}</span></h2>
       <p className="text-gray-500 text-lg">학생들이 입장하기를 기다리고 있습니다...</p>
+      {connectionStatus && <p className="text-sm text-orange-600 mt-2 font-mono font-bold bg-orange-50 inline-block px-2 py-1 rounded">{connectionStatus}</p>}
     </div>
     
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
@@ -133,113 +131,207 @@ const App: React.FC = () => {
   const [myPlayerId, setMyPlayerId] = useState<string>('');
   const [joinName, setJoinName] = useState('');
   const [joinRoomCode, setJoinRoomCode] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState('');
   
   // Action State (Guest)
   const [selectedLandIds, setSelectedLandIds] = useState<number[]>([]);
   const [actionLocked, setActionLocked] = useState(false);
 
-  // WebSocket
-  const wsRef = useRef<WebSocket | null>(null);
+  // PeerJS Refs
+  const peerRef = useRef<Peer | null>(null);
+  const connectionsRef = useRef<DataConnection[]>([]); // For Host: list of student connections
+  const hostConnRef = useRef<DataConnection | null>(null); // For Guest: connection to host
 
-  // Helper to send message
-  const sendMessage = useCallback((msg: BroadcastMessage) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
-    }
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Clean up peer connection when component unmounts or refreshes
+      if (peerRef.current) {
+        peerRef.current.destroy();
+        peerRef.current = null;
+      }
+    };
   }, []);
 
-  // Initialize WebSocket - Dynamic based on Room Code
-  useEffect(() => {
-    // Only connect if not in MENU and roomCode is set
-    if (mode === 'MENU') return;
+  // -- Networking Logic (PeerJS) --
 
-    const roomCode = gameState.roomCode;
-    const wsUrl = `${WS_BASE_URL}/${roomCode}`;
+  const getPeerId = (code: string) => `quiz-land-grab-${code}`; 
+
+  // PeerJS Config with STUN servers for better NAT traversal (Critical for Vercel/Public deployment)
+  const peerConfig = {
+    debug: 1, // Errors only
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
+      ]
+    }
+  };
+
+  // HOST: Start Server
+  const initializeHost = (code: string) => {
+    if (peerRef.current) peerRef.current.destroy();
+
+    setConnectionStatus('방 생성 중... (서버 연결 대기)');
     
-    console.log(`Connecting to WebSocket: ${wsUrl}`);
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    try {
+      // Host tries to claim the Room ID
+      const peer = new Peer(getPeerId(code), peerConfig);
+      
+      peer.on('open', (id) => {
+        console.log('Host ID Opened:', id);
+        setConnectionStatus('방이 생성되었습니다! 학생들이 입장할 수 있습니다.');
+        peerRef.current = peer;
+      });
 
-    ws.onopen = () => {
-      console.log('Connected to Game Server');
-      // If Host, broadcast initial state immediately to sync any late joiners/reconnects
-      if (mode === 'HOST') {
-        sendMessage({ type: 'HOST_ACTION', payload: { action: 'INIT' } }); // Just to trigger open
-        // Actually send state
-        ws.send(JSON.stringify({ type: 'STATE_UPDATE', payload: gameState }));
-      }
-      // If Guest, we already joined via joinGame function, but we might need to resend if connection dropped?
-      // For now, joinGame handles the initial join message.
-    };
+      peer.on('connection', (conn) => {
+        console.log('New connection received from:', conn.peer);
+        connectionsRef.current.push(conn);
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data) as BroadcastMessage;
+        conn.on('data', (data: any) => {
+          handleMessage(data);
+        });
+
+        conn.on('close', () => {
+          console.log('Client disconnected:', conn.peer);
+          connectionsRef.current = connectionsRef.current.filter(c => c !== conn);
+        });
+
+        conn.on('error', (err) => {
+          console.error('Connection error:', err);
+        });
+
+        // Send immediate state sync to new joiner
+        conn.on('open', () => {
+          console.log('Connection established, sending state to:', conn.peer);
+          conn.send({ type: 'STATE_UPDATE', payload: gameState });
+        });
+      });
+
+      peer.on('error', (err: any) => {
+        console.error('Peer Error:', err);
+        if (err.type === 'unavailable-id') {
+          alert('이미 사용 중인 방 코드입니다. 잠시 후 다시 시도하거나 다른 코드를 사용하세요. (새로고침 하셨다면 10초 정도 기다려주세요)');
+          setConnectionStatus('방 코드 중복됨');
+          setMode('MENU');
+        } else if (err.type === 'peer-unavailable') {
+           // Should not happen for host
+        } else if (err.type === 'network') {
+           setConnectionStatus('네트워크 오류. 방화벽이나 인터넷 연결을 확인하세요.');
+        } else {
+           setConnectionStatus(`오류 발생: ${err.type}`);
+        }
+      });
+      
+      peerRef.current = peer;
+    } catch (e) {
+      console.error(e);
+      setConnectionStatus('초기화 오류');
+    }
+  };
+
+  // GUEST: Join Server
+  const initializeGuest = (code: string, player: Player) => {
+    if (peerRef.current) peerRef.current.destroy();
+
+    setConnectionStatus('선생님 컴퓨터 찾는 중...');
+    
+    // Guest gets a random ID
+    const peer = new Peer(peerConfig); 
+    peerRef.current = peer;
+
+    peer.on('open', () => {
+      setConnectionStatus('서버 접속 성공. 선생님 방에 연결 시도...');
+      
+      // Connect to Host
+      const conn = peer.connect(getPeerId(code), {
+        reliable: true
+      });
+      
+      conn.on('open', () => {
+        console.log('Connected to Host!');
+        setConnectionStatus('연결 성공!');
+        hostConnRef.current = conn;
         
-        if (msg.type === 'STATE_UPDATE') {
-          // Both Host and Guest receive this, but Host is the source of truth.
-          // Guest ALWAYS syncs.
-          if (mode === 'GUEST') {
-             setGameState(msg.payload);
-             // If phase changed to ACTION_SELECT, unlock actions
-             if (msg.payload.phase === 'ACTION_SELECT') {
-               setActionLocked(false);
-               setSelectedLandIds([]);
-             }
-          }
-        } else if (msg.type === 'PLAYER_JOIN') {
-          if (mode === 'HOST') {
-            handlePlayerJoin(msg.payload);
-          }
-        } else if (msg.type === 'PLAYER_ACTION') {
-          if (mode === 'HOST') {
-            handlePlayerAction(msg.payload);
+        // Send join request
+        conn.send({ type: 'PLAYER_JOIN', payload: player });
+      });
+
+      conn.on('data', (data: any) => {
+        if (data && data.type === 'STATE_UPDATE') {
+          // Guest syncs state from Host
+          setGameState(data.payload);
+          // Unlock controls if new phase
+          if (data.payload.phase === 'ACTION_SELECT') {
+            setActionLocked(false);
+            setSelectedLandIds([]);
           }
         }
-      } catch (e) {
-        console.error("Failed to parse WS message", e);
-      }
-    };
+      });
 
-    ws.onclose = () => {
-      console.log('Disconnected from Game Server');
-    };
+      conn.on('close', () => {
+        alert('선생님과의 연결이 끊어졌습니다.');
+        setMode('MENU');
+      });
 
-    return () => {
-      ws.close();
-    };
-  }, [mode, gameState.roomCode, sendMessage]); // Re-connect if roomCode/mode changes
+      conn.on('error', (err) => {
+        console.error('Connection error:', err);
+        setConnectionStatus('연결 실패. 방 코드가 정확한지 확인하세요.');
+      });
 
-  // Host Logic: Update Clients when state changes
-  useEffect(() => {
+      // Timeout fallback
+      setTimeout(() => {
+        if (!conn.open) {
+            setConnectionStatus('연결 시간이 초과되었습니다. 방 코드를 다시 확인해주세요.');
+        }
+      }, 5000);
+    });
+
+    peer.on('error', (err: any) => {
+        console.error('Peer error:', err);
+        setConnectionStatus(`연결 오류: ${err.type}`);
+    });
+  };
+
+  // Host broadcasts state to all connected guests
+  const broadcastState = useCallback((state: GameState) => {
     if (mode === 'HOST') {
-      sendMessage({
-        type: 'STATE_UPDATE',
-        payload: gameState
+      connectionsRef.current.forEach(conn => {
+        if (conn.open) {
+          conn.send({ type: 'STATE_UPDATE', payload: state });
+        }
       });
     }
-  }, [gameState, mode, sendMessage]);
+  }, [mode]);
 
-  // -- Host Helpers --
+  // Sync state whenever it changes (Host only)
+  useEffect(() => {
+    if (mode === 'HOST') {
+      broadcastState(gameState);
+    }
+  }, [gameState, mode, broadcastState]);
+
+
+  // -- Message Handling (Host Only) --
+  const handleMessage = (msg: BroadcastMessage) => {
+    if (msg.type === 'PLAYER_JOIN') {
+      handlePlayerJoin(msg.payload);
+    } else if (msg.type === 'PLAYER_ACTION') {
+      handlePlayerAction(msg.payload);
+    }
+  };
 
   const handlePlayerJoin = (newPlayer: Player) => {
     setGameState(prev => {
-      // Reconnection Logic: Check by NAME
       const existingPlayerIndex = prev.players.findIndex(p => p.name === newPlayer.name);
       
       if (existingPlayerIndex !== -1) {
-        // Player exists (reconnecting)
-        // We update their ID to the new session ID so we can track them, but keep their game stats
+        // Reconnection logic
         const updatedPlayers = [...prev.players];
-        const existingPlayer = updatedPlayers[existingPlayerIndex];
-        
         updatedPlayers[existingPlayerIndex] = {
-          ...existingPlayer,
-          id: newPlayer.id, // Update ID to new connection ID
-          // Keep coins, lands, eliminated status
+          ...updatedPlayers[existingPlayerIndex],
+          id: newPlayer.id, // Update to new connection ID
         };
-        
-        // Add log
         return {
           ...prev,
           players: updatedPlayers,
@@ -247,7 +339,6 @@ const App: React.FC = () => {
         };
       }
 
-      // New Player
       return {
         ...prev,
         players: [...prev.players, newPlayer],
@@ -261,11 +352,9 @@ const App: React.FC = () => {
       const players = prev.players.map(p => {
         if (p.id !== action.playerId) return p;
         
-        // Handle Answer
         if (action.type === 'ANSWER') {
           const currentQuiz = prev.quizzes[prev.currentQuizIndex];
           const isCorrect = action.data.answerIndex === currentQuiz.correctIndex;
-          
           return {
             ...p,
             lastAnswerCorrect: isCorrect,
@@ -273,52 +362,23 @@ const App: React.FC = () => {
           };
         }
 
-        // Handle Strategy Selection
         if (action.type === 'STRATEGY') {
           return {
             ...p,
-            selectedAction: action.data.action, // 'ATTACK' or 'DEFEND'
+            selectedAction: action.data.action,
             pendingAttacks: action.data.targets || [],
             pendingShop: action.data.shopItem || null
           };
         }
-
         return p;
       });
       return { ...prev, players };
     });
   };
 
-  // CSV Import Logic (unchanged)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const lines = text.split('\n');
-      const newQuizzes: Quiz[] = [];
-      lines.forEach((line, idx) => {
-        const cols = line.split(',');
-        if (cols.length >= 6) {
-          newQuizzes.push({
-            id: `csv-${idx}`,
-            question: cols[0].trim(),
-            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
-            correctIndex: parseInt(cols[5].trim()) || 0
-          });
-        }
-      });
-      if (newQuizzes.length > 0) {
-        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
-        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
-      }
-    };
-    reader.readAsText(file);
-  };
+  // -- Game Actions --
 
-  // Host Control Flow
   const startGame = () => {
     const lands = generateMap(gameState.totalLands);
     const landsWithOwners = assignInitialLands(lands, gameState.players);
@@ -351,12 +411,7 @@ const App: React.FC = () => {
   };
 
   const endQuizPhase = () => {
-    // Transition to ACTION Phase automatically
-    setGameState(prev => ({
-      ...prev,
-      phase: 'ACTION_SELECT',
-      timer: 30
-    }));
+    setGameState(prev => ({ ...prev, phase: 'ACTION_SELECT', timer: 30 }));
     startTimer(30, () => resolveRound());
   };
 
@@ -390,7 +445,36 @@ const App: React.FC = () => {
     startTimer(gameState.quizDuration, () => endQuizPhase());
   };
 
-  // -- Guest Actions --
+  // CSV Import
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split('\n');
+      const newQuizzes: Quiz[] = [];
+      lines.forEach((line, idx) => {
+        const cols = line.split(',');
+        if (cols.length >= 6) {
+          newQuizzes.push({
+            id: `csv-${idx}`,
+            question: cols[0].trim(),
+            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
+            correctIndex: parseInt(cols[5].trim()) || 0
+          });
+        }
+      });
+      if (newQuizzes.length > 0) {
+        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
+        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // -- Guest Interactions --
 
   const joinGame = () => {
     if (!joinName || !joinRoomCode) return;
@@ -411,27 +495,11 @@ const App: React.FC = () => {
     setGameState(prev => ({ ...prev, roomCode: joinRoomCode }));
     setMode('GUEST');
     
-    // Slight delay to ensure WS connection is open before sending JOIN
-    setTimeout(() => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-             wsRef.current.send(JSON.stringify({
-                type: 'PLAYER_JOIN',
-                payload: newPlayer
-             }));
-        } else {
-            // Retry once if not ready
-             setTimeout(() => {
-                 wsRef.current?.send(JSON.stringify({
-                    type: 'PLAYER_JOIN',
-                    payload: newPlayer
-                 }));
-             }, 1000);
-        }
-    }, 500);
+    initializeGuest(joinRoomCode, newPlayer);
   };
 
   const submitAnswer = (idx: number) => {
-    sendMessage({
+    hostConnRef.current?.send({
       type: 'PLAYER_ACTION',
       payload: {
         playerId: myPlayerId,
@@ -443,7 +511,7 @@ const App: React.FC = () => {
 
   const submitStrategy = (action: 'ATTACK' | 'DEFEND', targets: number[], shopItem?: 'PIERCE' | 'BUY_LAND') => {
     setActionLocked(true);
-    sendMessage({
+    hostConnRef.current?.send({
       type: 'PLAYER_ACTION',
       payload: {
         playerId: myPlayerId,
@@ -503,14 +571,24 @@ const App: React.FC = () => {
                 <div className="space-y-4 bg-indigo-50 p-4 rounded-lg">
                    <div>
                      <label className="text-sm font-bold text-indigo-900 block mb-1">방 코드 설정</label>
-                     <input 
-                       type="text"
-                       className="w-full border p-2 rounded uppercase font-mono font-bold text-center tracking-widest"
-                       value={gameState.roomCode}
-                       onChange={(e) => setGameState({...gameState, roomCode: e.target.value.toUpperCase()})}
-                     />
+                     <div className="flex gap-2">
+                        <input 
+                          type="text"
+                          className="w-full border p-2 rounded uppercase font-mono font-bold text-center tracking-widest"
+                          value={gameState.roomCode}
+                          onChange={(e) => setGameState({...gameState, roomCode: e.target.value.toUpperCase()})}
+                          disabled={!!peerRef.current}
+                        />
+                     </div>
+                     {!peerRef.current && (
+                        <Button onClick={() => initializeHost(gameState.roomCode)} className="w-full mt-2" variant="primary">
+                            방 생성 및 서버 시작
+                        </Button>
+                     )}
+                     {connectionStatus && <p className="text-xs text-green-600 mt-1 font-bold">{connectionStatus}</p>}
                    </div>
 
+                   {/* Other settings */}
                    <div>
                      <label className="text-sm font-bold text-indigo-900 block mb-1">맵 크기 (칸 수)</label>
                      <div className="flex items-center gap-2">
@@ -547,7 +625,8 @@ const App: React.FC = () => {
                   isHost={true} 
                   players={gameState.players} 
                   onStart={startGame} 
-                  roomCode={gameState.roomCode} 
+                  roomCode={gameState.roomCode}
+                  connectionStatus={connectionStatus}
                 />
               </div>
             )}
@@ -588,26 +667,34 @@ const App: React.FC = () => {
   );
 
   const renderGuestDashboard = () => {
-    // Reconnect fallback: If myPlayerId is in gameState but ID doesn't match exactly (should handle by handlePlayerJoin logic),
-    // we find by NAME if we want stronger robustness, but ID update in handlePlayerJoin is safer.
     const me = gameState.players.find(p => p.id === myPlayerId);
     
-    // Fallback loading state
+    // Connection Loading State
+    if (!hostConnRef.current && mode === 'GUEST') {
+        return (
+            <div className="p-10 text-center space-y-4">
+                <div className="text-xl font-bold text-gray-400 animate-pulse">{connectionStatus}</div>
+                <div className="text-sm text-gray-500">잠시만 기다려주세요...</div>
+                <Button onClick={() => { setMode('MENU'); setConnectionStatus(''); }} variant="secondary">취소하고 돌아가기</Button>
+            </div>
+        );
+    }
+
+    // Lobby fallback
     if (!me) {
         if (gameState.phase === 'LOBBY') {
-             return <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} />;
+             return <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} connectionStatus={connectionStatus} />;
         }
         return (
             <div className="p-10 text-center space-y-4">
-                <div className="text-xl font-bold text-gray-400 animate-pulse">서버와 동기화 중이거나 접속이 끊겼습니다.</div>
-                <div className="text-sm text-gray-500">방 코드: {gameState.roomCode} / 이름: {joinName}</div>
-                <Button onClick={joinGame}>재접속 시도</Button>
+                <div className="text-xl font-bold text-gray-400">참가 정보를 찾을 수 없습니다.</div>
+                <Button onClick={() => setMode('MENU')}>메인으로 돌아가기</Button>
             </div>
         );
     }
 
     if (gameState.phase === 'LOBBY') {
-      return <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} />;
+      return <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} connectionStatus={connectionStatus} />;
     }
 
     if (gameState.phase === 'QUIZ') {
@@ -813,10 +900,6 @@ const App: React.FC = () => {
             </div>
             <Button onClick={joinGame} disabled={!joinName || !joinRoomCode} className="w-full py-3 text-lg mt-4">입장하기</Button>
           </div>
-        </div>
-        <div className="mt-12 text-center text-sm text-gray-400 bg-white/50 px-4 py-2 rounded-full backdrop-blur-sm">
-          <p>서버 연결 주소: {WS_BASE_URL}</p>
-          <p>Cloudflare 배포 후 App.tsx 상단의 WS_BASE_URL을 수정하세요.</p>
         </div>
       </div>
     );
