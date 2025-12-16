@@ -8,7 +8,25 @@ import { Button } from './components/Button';
 
 // -- Sub-Components --
 
-const LobbyView = ({ isHost, players, onStart, roomCode, connectionStatus }: { isHost: boolean, players: Player[], onStart: () => void, roomCode: string, connectionStatus: string }) => (
+const LobbyView = ({ 
+  isHost, 
+  players, 
+  onStart, 
+  roomCode, 
+  connectionStatus,
+  totalQuizzes,
+  setTotalQuizzes,
+  maxQuizzes
+}: { 
+  isHost: boolean, 
+  players: Player[], 
+  onStart: () => void, 
+  roomCode: string, 
+  connectionStatus: string,
+  totalQuizzes: number,
+  setTotalQuizzes: (n: number) => void,
+  maxQuizzes: number
+}) => (
   <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-8">
     <div className="text-center">
       <h2 className="text-4xl font-extrabold text-indigo-900 mb-2 tracking-tight">방 코드: <span className="text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border-2 border-indigo-100">{roomCode}</span></h2>
@@ -29,14 +47,31 @@ const LobbyView = ({ isHost, players, onStart, roomCode, connectionStatus }: { i
     </div>
 
     {isHost && (
-      <Button 
-        onClick={onStart} 
-        disabled={players.length < 2}
-        className="text-xl px-12 py-4 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-        variant="success"
-      >
-        게임 시작 ({players.length}명 대기중)
-      </Button>
+      <div className="w-full max-w-md space-y-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h3 className="font-bold text-gray-700">게임 설정</h3>
+          <div>
+            <label className="text-sm font-bold text-indigo-900 block mb-1">진행할 라운드(문제) 수</label>
+            <div className="flex items-center gap-2">
+              <input 
+                type="range" min="1" max={maxQuizzes} step="1"
+                className="w-full accent-indigo-600"
+                value={totalQuizzes}
+                onChange={(e) => setTotalQuizzes(parseInt(e.target.value))}
+              />
+              <span className="font-mono font-bold w-12 text-right">{totalQuizzes}개</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">총 {maxQuizzes}개의 준비된 문제 중 {totalQuizzes}개를 사용합니다.</p>
+          </div>
+          
+          <Button 
+            onClick={onStart} 
+            disabled={players.length < 2}
+            className="w-full text-xl py-4 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+            variant="success"
+          >
+            게임 시작 ({players.length}명 대기중)
+          </Button>
+      </div>
     )}
     {!isHost && <div className="text-indigo-600 animate-pulse font-bold text-lg">선생님이 곧 게임을 시작합니다...</div>}
   </div>
@@ -94,13 +129,18 @@ const QuizView = ({ quiz, timeRemaining, isHost, onAnswer }: { quiz: Quiz, timeR
             disabled={selectedIdx === null || isSubmitted}
             className="w-full sm:w-auto px-8 py-3 text-lg"
           >
-            {isSubmitted ? '제출 완료! (결과 대기 중...)' : '정답 제출하기'}
+            {isSubmitted ? '제출 완료! (다른 친구들 기다리는 중...)' : '정답 제출하기'}
           </Button>
-          {isSubmitted && <p className="mt-4 text-gray-500 animate-pulse">시간이 종료되면 결과를 알 수 있습니다.</p>}
+          {isSubmitted && <p className="mt-4 text-gray-500 animate-pulse">모든 친구들이 제출하면 바로 넘어갑니다.</p>}
         </div>
       )}
 
-      {isHost && <p className="mt-6 text-center text-gray-400 italic">진행자 화면: 정답을 선택할 수 없습니다.</p>}
+      {isHost && (
+          <div className="mt-6 text-center">
+             <p className="text-gray-400 italic mb-2">진행자 화면: 정답을 선택할 수 없습니다.</p>
+             <p className="text-indigo-600 font-bold">학생들이 모두 제출하면 자동으로 다음으로 넘어갑니다.</p>
+          </div>
+      )}
     </div>
   );
 };
@@ -133,6 +173,9 @@ const App: React.FC = () => {
   const [joinRoomCode, setJoinRoomCode] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('');
   
+  // Host Specific Local State
+  const [targetQuizCount, setTargetQuizCount] = useState<number>(DEFAULT_QUIZZES.length);
+
   // Action State (Guest)
   const [selectedLandIds, setSelectedLandIds] = useState<number[]>([]);
   const [actionLocked, setActionLocked] = useState(false);
@@ -141,11 +184,14 @@ const App: React.FC = () => {
   const peerRef = useRef<Peer | null>(null);
   const connectionsRef = useRef<DataConnection[]>([]); // For Host: list of student connections
   const hostConnRef = useRef<DataConnection | null>(null); // For Guest: connection to host
+  
+  // Timer Ref
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Clean up peer connection when component unmounts or refreshes
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (peerRef.current) {
         peerRef.current.destroy();
         peerRef.current = null;
@@ -157,9 +203,8 @@ const App: React.FC = () => {
 
   const getPeerId = (code: string) => `quiz-land-grab-${code}`; 
 
-  // PeerJS Config with STUN servers for better NAT traversal (Critical for Vercel/Public deployment)
   const peerConfig = {
-    debug: 1, // Errors only
+    debug: 1,
     config: {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -175,7 +220,6 @@ const App: React.FC = () => {
     setConnectionStatus('방 생성 중... (서버 연결 대기)');
     
     try {
-      // Host tries to claim the Room ID
       const peer = new Peer(getPeerId(code), peerConfig);
       
       peer.on('open', (id) => {
@@ -201,23 +245,23 @@ const App: React.FC = () => {
           console.error('Connection error:', err);
         });
 
-        // Send immediate state sync to new joiner
         conn.on('open', () => {
           console.log('Connection established, sending state to:', conn.peer);
-          conn.send({ type: 'STATE_UPDATE', payload: gameState });
+          // Send current state with a slight delay to ensure connection is stable
+          setTimeout(() => {
+             conn.send({ type: 'STATE_UPDATE', payload: gameState });
+          }, 100);
         });
       });
 
       peer.on('error', (err: any) => {
         console.error('Peer Error:', err);
         if (err.type === 'unavailable-id') {
-          alert('이미 사용 중인 방 코드입니다. 잠시 후 다시 시도하거나 다른 코드를 사용하세요. (새로고침 하셨다면 10초 정도 기다려주세요)');
+          alert('이미 사용 중인 방 코드입니다. 잠시 후 다시 시도하거나 다른 코드를 사용하세요.');
           setConnectionStatus('방 코드 중복됨');
           setMode('MENU');
-        } else if (err.type === 'peer-unavailable') {
-           // Should not happen for host
         } else if (err.type === 'network') {
-           setConnectionStatus('네트워크 오류. 방화벽이나 인터넷 연결을 확인하세요.');
+           setConnectionStatus('네트워크 오류. 인터넷 연결을 확인하세요.');
         } else {
            setConnectionStatus(`오류 발생: ${err.type}`);
         }
@@ -236,14 +280,12 @@ const App: React.FC = () => {
 
     setConnectionStatus('선생님 컴퓨터 찾는 중...');
     
-    // Guest gets a random ID
     const peer = new Peer(peerConfig); 
     peerRef.current = peer;
 
     peer.on('open', () => {
       setConnectionStatus('서버 접속 성공. 선생님 방에 연결 시도...');
       
-      // Connect to Host
       const conn = peer.connect(getPeerId(code), {
         reliable: true
       });
@@ -253,15 +295,12 @@ const App: React.FC = () => {
         setConnectionStatus('연결 성공!');
         hostConnRef.current = conn;
         
-        // Send join request
         conn.send({ type: 'PLAYER_JOIN', payload: player });
       });
 
       conn.on('data', (data: any) => {
         if (data && data.type === 'STATE_UPDATE') {
-          // Guest syncs state from Host
           setGameState(data.payload);
-          // Unlock controls if new phase
           if (data.payload.phase === 'ACTION_SELECT') {
             setActionLocked(false);
             setSelectedLandIds([]);
@@ -279,7 +318,6 @@ const App: React.FC = () => {
         setConnectionStatus('연결 실패. 방 코드가 정확한지 확인하세요.');
       });
 
-      // Timeout fallback
       setTimeout(() => {
         if (!conn.open) {
             setConnectionStatus('연결 시간이 초과되었습니다. 방 코드를 다시 확인해주세요.');
@@ -293,7 +331,6 @@ const App: React.FC = () => {
     });
   };
 
-  // Host broadcasts state to all connected guests
   const broadcastState = useCallback((state: GameState) => {
     if (mode === 'HOST') {
       connectionsRef.current.forEach(conn => {
@@ -304,7 +341,6 @@ const App: React.FC = () => {
     }
   }, [mode]);
 
-  // Sync state whenever it changes (Host only)
   useEffect(() => {
     if (mode === 'HOST') {
       broadcastState(gameState);
@@ -326,11 +362,10 @@ const App: React.FC = () => {
       const existingPlayerIndex = prev.players.findIndex(p => p.name === newPlayer.name);
       
       if (existingPlayerIndex !== -1) {
-        // Reconnection logic
         const updatedPlayers = [...prev.players];
         updatedPlayers[existingPlayerIndex] = {
           ...updatedPlayers[existingPlayerIndex],
-          id: newPlayer.id, // Update to new connection ID
+          id: newPlayer.id,
         };
         return {
           ...prev,
@@ -349,6 +384,7 @@ const App: React.FC = () => {
 
   const handlePlayerAction = (action: { playerId: string, type: string, data: any }) => {
     setGameState(prev => {
+      // 1. Update Player State
       const players = prev.players.map(p => {
         if (p.id !== action.playerId) return p;
         
@@ -372,7 +408,23 @@ const App: React.FC = () => {
         }
         return p;
       });
-      return { ...prev, players };
+
+      const newState = { ...prev, players };
+
+      // 2. Check for "All Answered" Condition if in Quiz Phase
+      if (prev.phase === 'QUIZ' && action.type === 'ANSWER') {
+        const answeredCount = players.filter(p => p.lastAnswerCorrect !== undefined).length;
+        if (answeredCount >= players.length) {
+          // If everyone answered, stop timer and end phase immediately
+          // We need to trigger this asynchronously to finish the current state update
+          setTimeout(() => {
+              if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+              endQuizPhase(newState);
+          }, 500);
+        }
+      }
+
+      return newState;
     });
   };
 
@@ -380,13 +432,30 @@ const App: React.FC = () => {
   // -- Game Actions --
 
   const startGame = () => {
+    // Slice quizzes based on host selection
+    const selectedQuizzes = gameState.quizzes.slice(0, targetQuizCount);
+
     const lands = generateMap(gameState.totalLands);
     const landsWithOwners = assignInitialLands(lands, gameState.players);
     
+    // Reset players round state
+    const resetPlayers = gameState.players.map(p => ({
+        ...p,
+        lastAnswerCorrect: undefined,
+        isEliminated: false,
+        coins: 0,
+        lands: [],
+    }));
+
+    // Re-assign lands to update player object
+    const finalLands = assignInitialLands(lands, resetPlayers);
+
     setGameState(prev => ({
       ...prev,
       phase: 'QUIZ',
-      lands: landsWithOwners,
+      players: resetPlayers,
+      lands: finalLands,
+      quizzes: selectedQuizzes,
       round: 1,
       currentQuizIndex: 0,
       timer: prev.quizDuration,
@@ -398,20 +467,35 @@ const App: React.FC = () => {
   };
 
   const startTimer = (seconds: number, onComplete: () => void) => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    
     let timeLeft = seconds;
-    const interval = setInterval(() => {
+    timerIntervalRef.current = setInterval(() => {
       timeLeft -= 1;
       setGameState(prev => ({ ...prev, timer: timeLeft }));
       
       if (timeLeft <= 0) {
-        clearInterval(interval);
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         onComplete();
       }
     }, 1000);
   };
 
-  const endQuizPhase = () => {
-    setGameState(prev => ({ ...prev, phase: 'ACTION_SELECT', timer: 30 }));
+  // Modified to optionally take a state to transition FROM (for auto-advance)
+  const endQuizPhase = (currentStateOverride?: GameState) => {
+    // If called from timer, we use setter. If called from auto-advance, we use the provided state to ensure freshness.
+    const transition = (prevState: GameState) => ({
+      ...prevState,
+      phase: 'ACTION_SELECT' as GamePhase,
+      timer: 30
+    });
+
+    if (currentStateOverride) {
+        setGameState(transition(currentStateOverride));
+    } else {
+        setGameState(prev => transition(prev));
+    }
+    
     startTimer(30, () => resolveRound());
   };
 
@@ -433,8 +517,19 @@ const App: React.FC = () => {
       if (nextIdx >= prev.quizzes.length) {
         return { ...prev, phase: 'GAME_OVER' };
       }
+      
+      // Reset answer state for next round
+      const nextPlayers = prev.players.map(p => ({
+          ...p,
+          lastAnswerCorrect: undefined,
+          selectedAction: undefined,
+          pendingAttacks: [],
+          pendingShop: null
+      }));
+
       return {
         ...prev,
+        players: nextPlayers,
         phase: 'QUIZ',
         currentQuizIndex: nextIdx,
         round: prev.round + 1,
@@ -468,6 +563,7 @@ const App: React.FC = () => {
       });
       if (newQuizzes.length > 0) {
         setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
+        setTargetQuizCount(newQuizzes.length); // Update target count on upload
         alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
       }
     };
@@ -499,14 +595,16 @@ const App: React.FC = () => {
   };
 
   const submitAnswer = (idx: number) => {
-    hostConnRef.current?.send({
-      type: 'PLAYER_ACTION',
-      payload: {
-        playerId: myPlayerId,
-        type: 'ANSWER',
-        data: { answerIndex: idx }
-      }
-    });
+    if (hostConnRef.current) {
+        hostConnRef.current.send({
+          type: 'PLAYER_ACTION',
+          payload: {
+            playerId: myPlayerId,
+            type: 'ANSWER',
+            data: { answerIndex: idx }
+          }
+        });
+    }
   };
 
   const submitStrategy = (action: 'ATTACK' | 'DEFEND', targets: number[], shopItem?: 'PIERCE' | 'BUY_LAND') => {
@@ -627,6 +725,9 @@ const App: React.FC = () => {
                   onStart={startGame} 
                   roomCode={gameState.roomCode}
                   connectionStatus={connectionStatus}
+                  totalQuizzes={targetQuizCount}
+                  setTotalQuizzes={setTargetQuizCount}
+                  maxQuizzes={gameState.quizzes.length}
                 />
               </div>
             )}
@@ -683,7 +784,16 @@ const App: React.FC = () => {
     // Lobby fallback
     if (!me) {
         if (gameState.phase === 'LOBBY') {
-             return <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} connectionStatus={connectionStatus} />;
+             return <LobbyView 
+                      isHost={false} 
+                      players={gameState.players} 
+                      onStart={() => {}} 
+                      roomCode={gameState.roomCode} 
+                      connectionStatus={connectionStatus}
+                      totalQuizzes={0}
+                      setTotalQuizzes={() => {}}
+                      maxQuizzes={0}
+                    />;
         }
         return (
             <div className="p-10 text-center space-y-4">
@@ -694,7 +804,16 @@ const App: React.FC = () => {
     }
 
     if (gameState.phase === 'LOBBY') {
-      return <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} connectionStatus={connectionStatus} />;
+      return <LobbyView 
+                isHost={false} 
+                players={gameState.players} 
+                onStart={() => {}} 
+                roomCode={gameState.roomCode} 
+                connectionStatus={connectionStatus} 
+                totalQuizzes={0}
+                setTotalQuizzes={() => {}}
+                maxQuizzes={0}
+              />;
     }
 
     if (gameState.phase === 'QUIZ') {
