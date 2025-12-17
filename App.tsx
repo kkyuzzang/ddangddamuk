@@ -872,8 +872,21 @@ const App: React.FC = () => {
               }
           }
       }
+
+      // New Player Logic with Color Uniqueness check
+      let assignedColor = newPlayer.color;
+      if (prev.players.length < COLORS.length) {
+          const usedColors = new Set(prev.players.map(p => p.color));
+          
+          if (usedColors.has(assignedColor)) {
+              const availableColors = COLORS.filter(c => !usedColors.has(c));
+              if (availableColors.length > 0) {
+                  assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+              }
+          }
+      }
       
-      const playerToAdd = { ...newPlayer, avatar: assignedAvatar };
+      const playerToAdd = { ...newPlayer, avatar: assignedAvatar, color: assignedColor };
 
       return {
         ...prev,
@@ -1694,13 +1707,17 @@ const App: React.FC = () => {
         <div className="mt-12 border-t border-gray-200 pt-6 text-center text-sm text-gray-500 pb-8">
             <p className="font-bold mb-2 text-gray-700">만든 사람: 경기도 지구과학 교사 뀨짱</p>
             <div className="flex justify-center items-center gap-3 flex-wrap">
-                <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition hover:underline">
-                    문의: 카카오톡 오픈채팅
-                </a>
+                <span>
+                    문의: <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800 transition">
+                        카카오톡 오픈채팅
+                    </a>
+                </span>
                 <span className="text-gray-300">|</span>
-                <a href="https://eduarchive.tistory.com/" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition hover:underline">
-                    블로그: 뀨짱쌤의 교육자료 아카이브
-                </a>
+                <span>
+                    블로그: <a href="https://eduarchive.tistory.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800 transition">
+                        뀨짱쌤의 교육자료 아카이브
+                    </a>
+                </span>
             </div>
         </div>
 
