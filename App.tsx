@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Peer, DataConnection } from 'peerjs';
 import { GameState, Player, BroadcastMessage, GamePhase, Quiz, AVATARS, COLORS, CombatEvent } from './types';
@@ -279,7 +278,7 @@ const LobbyView = ({
   onStart: () => void, 
   roomCode: string, 
   connectionStatus: string,
-  totalQuizzes: number,
+  totalQuizzes: number, 
   setTotalQuizzes: (n: number) => void,
   maxQuizzes: number
 }) => (
@@ -854,10 +853,28 @@ const App: React.FC = () => {
         };
       }
 
+      // New Player Logic with Avatar Uniqueness check
+      let assignedAvatar = newPlayer.avatar;
+      
+      // If we have fewer players than unique avatars, enforce uniqueness
+      if (prev.players.length < AVATARS.length) {
+          const usedAvatars = new Set(prev.players.map(p => p.avatar));
+          
+          if (usedAvatars.has(assignedAvatar)) {
+              const availableAvatars = AVATARS.filter(a => !usedAvatars.has(a));
+              if (availableAvatars.length > 0) {
+                  // Pick a random available avatar
+                  assignedAvatar = availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
+              }
+          }
+      }
+      
+      const playerToAdd = { ...newPlayer, avatar: assignedAvatar };
+
       return {
         ...prev,
-        players: [...prev.players, newPlayer],
-        logs: [...prev.logs, `${newPlayer.name}님이 입장했습니다.`]
+        players: [...prev.players, playerToAdd],
+        logs: [...prev.logs, `${playerToAdd.name}님이 입장했습니다.`]
       };
     });
   };
@@ -1355,295 +1372,168 @@ const App: React.FC = () => {
   );
 
   const renderGuestDashboard = () => {
-    // ... (Guest implementation same as previous, logic handled inside GuestActionView and useEffects above)
-    // Only difference is props passed are static, logic update handled in initializeGuest
-
     const me = gameState.players.find(p => p.id === myPlayerId);
-    
-    // Connection Loading State
-    if (!hostConnRef.current && mode === 'GUEST') {
-        return (
-            <div className="p-10 text-center space-y-4">
-                <div className="text-xl font-bold text-gray-400 animate-pulse">{connectionStatus}</div>
-                <div className="text-sm text-gray-500">잠시만 기다려주세요...</div>
-                <Button onClick={() => { setMode('MENU'); setConnectionStatus(''); }} variant="secondary">취소하고 돌아가기</Button>
-            </div>
-        );
-    }
+    if (!me) return <div className="p-8 text-center font-bold text-gray-500">플레이어 정보를 불러오는 중...</div>;
 
-    // Lobby fallback
-    if (!me) {
-        if (gameState.phase === 'LOBBY') {
-             return <LobbyView 
-                      isHost={false} 
-                      players={gameState.players} 
-                      onStart={() => {}} 
-                      roomCode={gameState.roomCode} 
-                      connectionStatus={connectionStatus}
-                      totalQuizzes={0}
-                      setTotalQuizzes={() => {}}
-                      maxQuizzes={0}
-                    />;
+    const toggleLandSelection = (landId: number) => {
+        if (actionLocked) return;
+        if (selectedLandIds.includes(landId)) {
+            setSelectedLandIds(selectedLandIds.filter(id => id !== landId));
+        } else {
+             const maxAttacks = me.lastAnswerCorrect ? 2 : 1;
+             if (pendingShopItem === 'BUY_LAND') {
+                if (selectedLandIds.length < maxAttacks) {
+                    setSelectedLandIds([...selectedLandIds, landId]);
+                }
+             } else {
+                 if (selectedLandIds.length < maxAttacks) {
+                    setSelectedLandIds([...selectedLandIds, landId]);
+                 }
+             }
         }
-        return (
-            <div className="p-10 text-center space-y-4">
-                <div className="text-xl font-bold text-gray-400">참가 정보를 찾을 수 없습니다.</div>
-                <Button onClick={() => setMode('MENU')}>메인으로 돌아가기</Button>
-            </div>
-        );
-    }
+    };
 
-    if (gameState.phase === 'LOBBY') {
-      return <LobbyView 
+    const handleConfirmAttack = () => {
+        submitStrategy('ATTACK', selectedLandIds, pendingShopItem);
+    };
+
+    const handleDefend = () => {
+        submitStrategy('DEFEND', [], pendingShopItem);
+    };
+    
+    const onShopItemSelect = (item: 'PIERCE' | 'BUY_LAND' | undefined) => {
+        if (actionLocked) return;
+        setPendingShopItem(item);
+    };
+
+    return (
+        <GuestActionView 
+            me={me} 
+            gameState={gameState} 
+            myPlayerId={myPlayerId} 
+            actionLocked={actionLocked} 
+            selectedLandIds={selectedLandIds} 
+            toggleLandSelection={toggleLandSelection} 
+            handleConfirmAttack={handleConfirmAttack} 
+            handleDefend={handleDefend}
+            canDefend={me.lastAnswerCorrect && !me.isDefending}
+            allowedAttacks={me.lastAnswerCorrect ? 2 : 1}
+            onShopItemSelect={onShopItemSelect}
+            pendingShopItem={pendingShopItem}
+            prevQuiz={gameState.currentQuizIndex > 0 ? gameState.quizzes[gameState.currentQuizIndex - 1] : undefined}
+        />
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 font-sans text-gray-900">
+      <div className="container mx-auto px-4 py-8">
+        {mode === 'MENU' && (
+          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-12 border-t-8 border-indigo-600">
+            <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-10 text-center text-white">
+              <h1 className="text-4xl font-extrabold mb-2 tracking-tight drop-shadow-md">Quiz Land Grab</h1>
+              <p className="text-indigo-100 font-medium">지략과 전략의 천하통일 게임</p>
+            </div>
+            <div className="p-8 space-y-6">
+              <button 
+                onClick={() => setMode('HOST')}
+                className="w-full bg-indigo-50 text-indigo-700 py-4 rounded-xl font-bold text-lg hover:bg-indigo-100 transition shadow-sm border-2 border-indigo-100 flex items-center justify-center gap-2 group"
+              >
+                <span className="group-hover:scale-110 transition-transform">👑</span> 선생님(진행자)로 시작
+              </button>
+              
+              <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-3 bg-white text-gray-400 font-medium">학생 참여</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <input 
+                  type="text" 
+                  placeholder="이름 (닉네임)" 
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition font-bold text-gray-800 placeholder-gray-400"
+                  value={joinName}
+                  onChange={(e) => setJoinName(e.target.value)}
+                />
+                <input 
+                  type="text" 
+                  placeholder="방 코드 (예: CLASS1)" 
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition font-mono font-bold text-lg uppercase placeholder-gray-400 tracking-wider"
+                  value={joinRoomCode}
+                  onChange={(e) => setJoinRoomCode(e.target.value.toUpperCase())}
+                />
+                <button 
+                  onClick={joinGame}
+                  disabled={!joinName || !joinRoomCode}
+                  className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-indigo-700 hover:shadow-xl transition disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5"
+                >
+                  전쟁터로 입장하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {mode === 'HOST' && renderHostDashboard()}
+
+        {mode === 'GUEST' && (
+          <div>
+             {/* Guest Header */}
+             {gameState.phase !== 'GAME_OVER' && (
+                <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border-l-4 border-indigo-500">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm overflow-hidden border-2 border-gray-100`}>
+                            {gameState.players.find(p => p.id === myPlayerId)?.avatar && (
+                                <img 
+                                src={gameState.players.find(p => p.id === myPlayerId)?.avatar} 
+                                alt="avatar" 
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                                />
+                            )}
+                        </div>
+                        <div>
+                            <div className="text-xs text-gray-500 font-bold">나의 이름</div>
+                            <div className="font-bold text-gray-800">{gameState.players.find(p => p.id === myPlayerId)?.name || joinName}</div>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                         <div className="text-xs text-gray-500 font-bold">현재 라운드</div>
+                         <div className="font-mono font-bold text-indigo-600">{gameState.round} / {gameState.quizzes.length}</div>
+                    </div>
+                </div>
+             )}
+
+            {gameState.phase === 'LOBBY' && (
+              <LobbyView 
                 isHost={false} 
                 players={gameState.players} 
                 onStart={() => {}} 
-                roomCode={gameState.roomCode} 
-                connectionStatus={connectionStatus} 
-                totalQuizzes={0}
+                roomCode={gameState.roomCode}
+                connectionStatus={connectionStatus}
+                totalQuizzes={targetQuizCount}
                 setTotalQuizzes={() => {}}
-                maxQuizzes={0}
-              />;
-    }
-
-    if (gameState.phase === 'QUIZ') {
-      return (
-        <div className="p-4 pt-10">
-          <PhaseVisual phase="QUIZ" />
-          <QuizView 
-            quiz={gameState.quizzes[gameState.currentQuizIndex]}
-            timeRemaining={gameState.timer}
-            isHost={false}
-            onAnswer={submitAnswer}
-          />
-        </div>
-      );
-    }
-
-    if (gameState.phase === 'ACTION_SELECT') {
-      const allowedAttacks = me.lastAnswerCorrect ? 2 : 1;
-      const canDefend = me.lastAnswerCorrect;
-      
-      const toggleLandSelection = (id: number) => {
-        if (actionLocked) return;
-        const land = gameState.lands.find(l => l.id === id);
-        if (!land) return;
-        
-        // Prevent selecting own land
-        if (land.ownerId === myPlayerId) {
-            alert("우리 땅은 공격할 수 없습니다.");
-            return;
-        }
-        
-        // Prevent selecting empty land (Rule Change: Attack is PvP only)
-        if (!land.ownerId) {
-            alert("빈 땅은 공격할 수 없습니다. '빈 땅 구매' 아이템을 이용하세요.");
-            return;
-        }
-
-        if (selectedLandIds.includes(id)) {
-          setSelectedLandIds(prev => prev.filter(lid => lid !== id));
-        } else {
-          if (selectedLandIds.length < allowedAttacks) {
-            setSelectedLandIds(prev => [...prev, id]);
-          } else {
-             // FIFO Selection: If max reached, remove first selected and add new one
-             if (allowedAttacks === 1) {
-                 setSelectedLandIds([id]);
-             } else {
-                 setSelectedLandIds(prev => [...prev.slice(1), id]);
-             }
-          }
-        }
-      };
-
-      const handleConfirmAttack = () => {
-        submitStrategy('ATTACK', selectedLandIds, pendingShopItem);
-      };
-
-      const handleDefend = () => {
-        submitStrategy('DEFEND', [], pendingShopItem);
-      };
-      
-      // Get previous quiz for display
-      const prevQuiz = gameState.currentQuizIndex >= 0 ? gameState.quizzes[gameState.currentQuizIndex] : null;
-
-      return (
-          <GuestActionView 
-            me={me}
-            gameState={gameState}
-            myPlayerId={myPlayerId}
-            actionLocked={actionLocked}
-            selectedLandIds={selectedLandIds}
-            toggleLandSelection={toggleLandSelection}
-            handleConfirmAttack={handleConfirmAttack}
-            handleDefend={handleDefend}
-            canDefend={canDefend}
-            allowedAttacks={allowedAttacks}
-            onShopItemSelect={setPendingShopItem}
-            pendingShopItem={pendingShopItem}
-            prevQuiz={prevQuiz}
-          />
-      );
-    }
-
-    if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') {
-       // Filter attacks where I was the WINNER
-       const myWins = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type !== 'BOUGHT');
-       // Filter attacks where I participated (was in allAttackers) but LOST (winner != me)
-       const myLosses = gameState.lastRoundEvents.filter(e => e.allAttackers && e.allAttackers.includes(me.name) && e.attackerName !== me.name);
-
-       const myPurchases = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type === 'BOUGHT');
-       const attackedMe = gameState.lastRoundEvents.filter(e => e.defenderName === me.name);
-
-       return (
-         <div className="p-4 space-y-4 max-w-4xl mx-auto">
-           <PhaseVisual phase={gameState.phase === 'GAME_OVER' ? 'ROUND_RESULT' : gameState.phase} />
-            
-           {gameState.phase === 'GAME_OVER' ? (
-                <Leaderboard players={gameState.players} myPlayerId={myPlayerId} />
-           ) : (
-             <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
-               🤝 외교 타임
-             </h2>
-           )}
-           
-           <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 shadow-sm">
-             <h3 className="font-bold text-yellow-800 mb-3 text-lg border-b border-yellow-200 pb-2">📊 이번 라운드 전투 요약</h3>
-             <div className="space-y-3 text-sm">
-               <div className="bg-white p-3 rounded border border-yellow-100">
-                 <p className="font-bold text-blue-600 mb-1">⚔️ 내가 공격한 곳:</p>
-                 <div className="text-gray-700 space-y-1">
-                   {myWins.length === 0 && myLosses.length === 0 && <span>없음</span>}
-                   
-                   {/* Successful Attacks */}
-                   {myWins.map((e, idx) => {
-                       const isConflict = (e.allAttackers?.length || 0) > 1;
-                       return (
-                           <div key={`win-${idx}`} className="flex items-center gap-2">
-                               <span className="text-green-600 font-bold">✅ 승리:</span>
-                               <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
-                               {isConflict ? 
-                                   <span className="text-xs bg-orange-100 text-orange-700 px-2 rounded-full font-bold">치열한 전쟁 끝에 땅을 획득!</span> 
-                                   : <span className="text-xs text-gray-500">(점령 성공)</span>
-                               }
-                           </div>
-                       );
-                   })}
-                   
-                   {/* Failed Attacks (Lost conflict) */}
-                   {myLosses.map((e, idx) => (
-                       <div key={`loss-${idx}`} className="flex items-center gap-2">
-                           <span className="text-red-500 font-bold">❌ 패배:</span>
-                           <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
-                           <span className="text-xs bg-gray-200 text-gray-600 px-2 rounded-full font-bold">다른 나라의 국력에 밀림...</span>
-                       </div>
-                   ))}
-                 </div>
-               </div>
-               <div className="bg-white p-3 rounded border border-yellow-100">
-                 <p className="font-bold text-purple-600 mb-1">💰 내가 구매한 곳:</p>
-                 <p className="text-gray-700">
-                   {myPurchases.length > 0 
-                     ? myPurchases.map((e, idx) => <span key={idx} className="inline-block mr-2">No.{e.landId+1}{idx < myPurchases.length-1 ? ',' : ''}</span>) 
-                     : '없음'}
-                 </p>
-               </div>
-               <div className="bg-white p-3 rounded border border-yellow-100">
-                 <p className="font-bold text-red-600 mb-1">🛡️ 나를 공격한 사람:</p>
-                 <p className="text-gray-700">
-                   {attackedMe.length > 0 
-                     ? [...new Set(attackedMe.map(e => e.attackerName))].map((name, idx, arr) => <span key={idx} className="inline-block mr-2 font-bold">{name}{idx < arr.length-1 ? ',' : ''}</span>) 
-                     : '없음'}
-                 </p>
-               </div>
-             </div>
-           </div>
-
-           <GameMap 
-             lands={gameState.lands} 
-             players={gameState.players} 
-             myPlayerId={myPlayerId} 
-             combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []}
-           />
-           <div className="bg-white p-4 rounded-xl shadow border border-gray-100 max-h-40 overflow-y-auto">
-             {gameState.logs.slice(-5).map((l, i) => <p key={i} className="text-sm border-b py-2 text-gray-700">{l}</p>)}
-           </div>
-           
-           {gameState.phase !== 'GAME_OVER' && (
-               <div className="text-center mt-6">
-                 <span className="inline-block animate-bounce text-indigo-500">⏳</span>
-                 <p className="text-indigo-600 font-bold inline-block ml-2">선생님이 다음 라운드를 준비 중입니다...</p>
-               </div>
-           )}
-         </div>
-       );
-    }
-
-    return <div>알 수 없는 상태입니다.</div>;
-  };
-
-  // Main Render Switch
-  if (mode === 'MENU') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 flex flex-col items-center justify-center p-4">
-        <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-2 drop-shadow-sm">
-          삼국지 땅따먹기
-        </h1>
-        <p className="text-gray-500 mb-12 text-lg font-medium">지식을 겨루고 영토를 확장하세요!</p>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-2xl">
-          <button 
-            onClick={() => { setMode('HOST'); setMyPlayerId('HOST'); }}
-            className="group bg-white p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-all border-4 border-transparent hover:border-indigo-500 text-left transform hover:-translate-y-1"
-          >
-            <div className="text-4xl mb-4">👑</div>
-            <h2 className="text-2xl font-bold text-gray-800 group-hover:text-indigo-600">선생님 (방 만들기)</h2>
-            <p className="text-gray-500 mt-2">퀴즈를 관리하고 게임을 진행합니다.</p>
-          </button>
-          
-          <div className="bg-white p-8 rounded-2xl shadow-xl border-4 border-transparent flex flex-col justify-center transform hover:-translate-y-1 transition-transform">
-             <div className="text-4xl mb-4">🎓</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">학생 (참여하기)</h2>
-            <div className="space-y-3">
-              <input 
-                type="text" 
-                placeholder="이름 입력" 
-                className="w-full bg-gray-100 p-4 rounded-xl border-2 border-gray-200 focus:border-indigo-500 outline-none font-bold text-lg"
-                value={joinName}
-                onChange={e => setJoinName(e.target.value)}
+                maxQuizzes={gameState.quizzes.length}
               />
-              <input 
-                type="text" 
-                placeholder="방 코드 (예: CLASS1)" 
-                className="w-full bg-gray-100 p-4 rounded-xl border-2 border-gray-200 focus:border-indigo-500 outline-none font-bold text-lg uppercase"
-                value={joinRoomCode}
-                onChange={e => setJoinRoomCode(e.target.value.toUpperCase())}
-              />
-            </div>
-            <Button onClick={joinGame} disabled={!joinName || !joinRoomCode} className="w-full py-3 text-lg mt-4">입장하기</Button>
+            )}
+
+            {gameState.phase === 'QUIZ' && (
+               <QuizView 
+                 quiz={gameState.quizzes[gameState.currentQuizIndex]}
+                 timeRemaining={gameState.timer}
+                 isHost={false}
+                 onAnswer={submitAnswer}
+               />
+            )}
+
+            {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') && renderGuestDashboard()}
           </div>
-        </div>
+        )}
       </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
-        <div className="font-bold text-indigo-700 flex items-center gap-2 text-lg">
-          <span>🏰</span> 삼국지 땅따먹기
-        </div>
-        <div className="flex gap-2 items-center">
-           <span className="text-xs text-gray-400 font-mono border px-2 py-1 rounded bg-gray-50">ROOM: {gameState.roomCode}</span>
-           <div className="text-xs font-bold font-mono bg-indigo-50 text-indigo-800 px-3 py-1.5 rounded-full">
-              {mode === 'HOST' ? '👑 선생님 모드' : `👤 ${gameState.players.find(p => p.id === myPlayerId)?.name || '게스트'}`}
-           </div>
-        </div>
-      </div>
-
-      {mode === 'HOST' ? renderHostDashboard() : renderGuestDashboard()}
     </div>
   );
 };
