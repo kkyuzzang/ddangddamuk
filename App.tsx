@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Peer, DataConnection } from 'peerjs';
 import { GameState, Player, BroadcastMessage, GamePhase, Quiz, AVATARS, COLORS, CombatEvent } from './types';
@@ -1377,17 +1378,36 @@ const App: React.FC = () => {
 
     const toggleLandSelection = (landId: number) => {
         if (actionLocked) return;
+        
+        const land = gameState.lands.find(l => l.id === landId);
+        if (!land) return;
+
+        // Rule: Cannot select own land
+        if (land.ownerId === myPlayerId) {
+            alert("우리 땅은 공격할 수 없습니다.");
+            return;
+        }
+
+        // Rule: Cannot select empty land
+        if (!land.ownerId) {
+            alert("빈 땅은 공격할 수 없습니다. '빈 땅 구매' 아이템을 이용하세요.");
+            return;
+        }
+
         if (selectedLandIds.includes(landId)) {
             setSelectedLandIds(selectedLandIds.filter(id => id !== landId));
         } else {
              const maxAttacks = me.lastAnswerCorrect ? 2 : 1;
-             if (pendingShopItem === 'BUY_LAND') {
-                if (selectedLandIds.length < maxAttacks) {
-                    setSelectedLandIds([...selectedLandIds, landId]);
-                }
+             // If buying land, selection logic is different or not needed here (since buying is random)
+             // But assuming this is purely for ATTACK selection:
+             if (selectedLandIds.length < maxAttacks) {
+                setSelectedLandIds([...selectedLandIds, landId]);
              } else {
-                 if (selectedLandIds.length < maxAttacks) {
-                    setSelectedLandIds([...selectedLandIds, landId]);
+                 // FIFO replacement if full
+                 if (maxAttacks === 1) {
+                     setSelectedLandIds([landId]);
+                 } else {
+                     setSelectedLandIds([...selectedLandIds.slice(1), landId]);
                  }
              }
         }
@@ -1405,6 +1425,114 @@ const App: React.FC = () => {
         if (actionLocked) return;
         setPendingShopItem(item);
     };
+
+    if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') {
+       // Filter attacks where I was the WINNER
+       const myWins = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type !== 'BOUGHT');
+       // Filter attacks where I participated (was in allAttackers) but LOST (winner != me)
+       const myLosses = gameState.lastRoundEvents.filter(e => e.allAttackers && e.allAttackers.includes(me.name) && e.attackerName !== me.name);
+
+       const myPurchases = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type === 'BOUGHT');
+       const attackedMe = gameState.lastRoundEvents.filter(e => e.defenderName === me.name);
+
+       return (
+         <div className="p-4 space-y-4 max-w-4xl mx-auto">
+           <PhaseVisual phase={gameState.phase === 'GAME_OVER' ? 'ROUND_RESULT' : gameState.phase} />
+            
+           {gameState.phase === 'GAME_OVER' ? (
+                <Leaderboard players={gameState.players} myPlayerId={myPlayerId} />
+           ) : (
+             <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
+               🤝 외교 타임
+             </h2>
+           )}
+           
+           <div className="bg-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center border-b-4 border-indigo-100">
+             <div>
+               <div className="text-xs text-gray-500 font-bold">국고 (군자금)</div>
+               <div className="text-2xl font-bold text-yellow-500 flex items-center drop-shadow-sm">
+                 💰 {me.coins}금
+               </div>
+             </div>
+             <div className="text-right">
+               <div className="text-xs text-gray-500 font-bold">직전 퀴즈 결과</div>
+               <div className={`font-bold text-lg ${me.lastAnswerCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                 {me.lastAnswerCorrect ? '승리! (+1금)' : '패배'}
+               </div>
+             </div>
+          </div>
+           
+           <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 shadow-sm">
+             <h3 className="font-bold text-yellow-800 mb-3 text-lg border-b border-yellow-200 pb-2">📊 이번 라운드 전투 요약</h3>
+             <div className="space-y-3 text-sm">
+               <div className="bg-white p-3 rounded border border-yellow-100">
+                 <p className="font-bold text-blue-600 mb-1">⚔️ 내가 공격한 곳:</p>
+                 <div className="text-gray-700 space-y-1">
+                   {myWins.length === 0 && myLosses.length === 0 && <span>없음</span>}
+                   
+                   {/* Successful Attacks */}
+                   {myWins.map((e, idx) => {
+                       const isConflict = (e.allAttackers?.length || 0) > 1;
+                       return (
+                           <div key={`win-${idx}`} className="flex items-center gap-2">
+                               <span className="text-green-600 font-bold">✅ 승리:</span>
+                               <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
+                               {isConflict ? 
+                                   <span className="text-xs bg-orange-100 text-orange-700 px-2 rounded-full font-bold">치열한 전쟁 끝에 땅을 획득!</span> 
+                                   : <span className="text-xs text-gray-500">(점령 성공)</span>
+                               }
+                           </div>
+                       );
+                   })}
+                   
+                   {/* Failed Attacks (Lost conflict) */}
+                   {myLosses.map((e, idx) => (
+                       <div key={`loss-${idx}`} className="flex items-center gap-2">
+                           <span className="text-red-500 font-bold">❌ 패배:</span>
+                           <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
+                           <span className="text-xs bg-gray-200 text-gray-600 px-2 rounded-full font-bold">다른 나라의 국력에 밀림...</span>
+                       </div>
+                   ))}
+                 </div>
+               </div>
+               <div className="bg-white p-3 rounded border border-yellow-100">
+                 <p className="font-bold text-purple-600 mb-1">💰 내가 구매한 곳:</p>
+                 <p className="text-gray-700">
+                   {myPurchases.length > 0 
+                     ? myPurchases.map((e, idx) => <span key={idx} className="inline-block mr-2">No.{e.landId+1}{idx < myPurchases.length-1 ? ',' : ''}</span>) 
+                     : '없음'}
+                 </p>
+               </div>
+               <div className="bg-white p-3 rounded border border-yellow-100">
+                 <p className="font-bold text-red-600 mb-1">🛡️ 나를 공격한 사람:</p>
+                 <p className="text-gray-700">
+                   {attackedMe.length > 0 
+                     ? [...new Set(attackedMe.map(e => e.attackerName))].map((name, idx, arr) => <span key={idx} className="inline-block mr-2 font-bold">{name}{idx < arr.length-1 ? ',' : ''}</span>) 
+                     : '없음'}
+                 </p>
+               </div>
+             </div>
+           </div>
+
+           <GameMap 
+             lands={gameState.lands} 
+             players={gameState.players} 
+             myPlayerId={myPlayerId} 
+             combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []}
+           />
+           <div className="bg-white p-4 rounded-xl shadow border border-gray-100 max-h-40 overflow-y-auto">
+             {gameState.logs.slice(-5).reverse().map((l, i) => <p key={i} className="text-sm border-b py-2 text-gray-700">{l}</p>)}
+           </div>
+           
+           {gameState.phase !== 'GAME_OVER' && (
+               <div className="text-center mt-6">
+                 <span className="inline-block animate-bounce text-indigo-500">⏳</span>
+                 <p className="text-indigo-600 font-bold inline-block ml-2">선생님이 다음 라운드를 준비 중입니다...</p>
+               </div>
+           )}
+         </div>
+       );
+    }
 
     return (
         <GuestActionView 

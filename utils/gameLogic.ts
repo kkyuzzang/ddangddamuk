@@ -187,7 +187,8 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
       .map(l => l.id);
     
     // Reset temporary round states
-    p.lastAnswerCorrect = undefined;
+    // Note: lastAnswerCorrect is NOT reset here, so it persists to ROUND_RESULT phase. 
+    // It should be reset in nextRound() instead.
     p.selectedAction = undefined;
     p.pendingAttacks = [];
     p.pendingShop = null;
