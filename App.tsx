@@ -6,32 +6,79 @@ import { generateMap, assignInitialLands, resolveTurn } from './utils/gameLogic'
 import { GameMap } from './components/GameMap';
 import { Button } from './components/Button';
 
+// -- Assets --
+const IMAGES = {
+  QUIZ: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Zhuge_Liang_Portrait.jpg/440px-Zhuge_Liang_Portrait.jpg", // Zhuge Liang
+  ACTION: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Guan_Yu_Portrait.jpg/400px-Guan_Yu_Portrait.jpg", // Guan Yu
+  DIPLOMACY: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Liu_Bei_Portrait.jpg/400px-Liu_Bei_Portrait.jpg" // Liu Bei
+};
+
 // -- Sub-Components --
+
+const PhaseVisual = ({ phase }: { phase: GamePhase }) => {
+    let imgUrl = "";
+    let title = "";
+    let desc = "";
+    let color = "";
+
+    switch(phase) {
+        case 'QUIZ':
+            imgUrl = IMAGES.QUIZ;
+            title = "지략의 시간 (퀴즈)";
+            desc = "제갈량의 지혜로 문제를 해결하고 군자금을 확보하라!";
+            color = "border-indigo-500 bg-indigo-50";
+            break;
+        case 'ACTION_SELECT':
+            imgUrl = IMAGES.ACTION;
+            title = "전쟁의 서막 (전략)";
+            desc = "관우의 무용으로 적진을 돌파하거나 굳건히 방어하라!";
+            color = "border-red-500 bg-red-50";
+            break;
+        case 'ROUND_RESULT':
+            imgUrl = IMAGES.DIPLOMACY;
+            title = "천하 정세 (외교)";
+            desc = "유비의 덕으로 동맹을 맺고 적을 파악하라!";
+            color = "border-green-500 bg-green-50";
+            break;
+        default:
+            return null;
+    }
+
+    return (
+        <div className={`flex items-center gap-4 p-4 rounded-xl border-l-4 shadow-sm mb-4 ${color} transition-all duration-500`}>
+            <img src={imgUrl} alt={title} className="w-20 h-20 object-cover rounded-full border-2 border-white shadow-md" />
+            <div>
+                <h3 className="font-bold text-lg text-gray-800">{title}</h3>
+                <p className="text-sm text-gray-600">{desc}</p>
+            </div>
+        </div>
+    );
+};
 
 const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GamePhase }) => {
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
-                <h3 className="font-bold text-gray-700">📜 학생 현황판</h3>
+                <h3 className="font-bold text-gray-700">📜 장수 현황판</h3>
                 <span className="text-xs text-gray-500 font-mono">총 {players.length}명</span>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                     <thead className="bg-gray-50 text-gray-500 font-medium">
                         <tr>
-                            <th className="px-4 py-2">플레이어</th>
-                            <th className="px-4 py-2 text-center">땅 / 코인</th>
+                            <th className="px-4 py-2">군주</th>
+                            <th className="px-4 py-2 text-center">영토 / 군자금</th>
                             <th className="px-4 py-2 text-center">퀴즈 결과</th>
-                            <th className="px-4 py-2 text-center">행동</th>
+                            <th className="px-4 py-2 text-center">전략</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {players.map(p => {
                             let actionText = '-';
                             if (phase === 'ACTION_SELECT' || phase === 'ROUND_RESULT') {
-                                if (p.selectedAction === 'DEFEND') actionText = '🛡️ 방어';
-                                else if (p.pendingAttacks.length > 0) actionText = `⚔️ 공격 (${p.pendingAttacks.length})`;
-                                else if (p.pendingShop === 'BUY_LAND') actionText = '💰 땅 구매';
+                                if (p.selectedAction === 'DEFEND') actionText = '🛡️ 철벽 방어';
+                                else if (p.pendingAttacks.length > 0) actionText = `⚔️ 침공 (${p.pendingAttacks.length}곳)`;
+                                else if (p.pendingShop === 'BUY_LAND') actionText = '💰 영토 매입';
                                 else actionText = '대기중';
                             }
                             
@@ -44,17 +91,17 @@ const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GameP
                                         <span className={`font-bold ${p.isEliminated ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
                                             {p.name}
                                         </span>
-                                        {p.isEliminated && <span className="text-xs bg-red-100 text-red-600 px-1 rounded">탈락</span>}
+                                        {p.isEliminated && <span className="text-xs bg-red-100 text-red-600 px-1 rounded">패배</span>}
                                     </td>
                                     <td className="px-4 py-3 text-center">
                                         <div className="font-mono">
-                                            <span className="text-indigo-600 font-bold">{p.lands.length}땅</span>
+                                            <span className="text-indigo-600 font-bold">{p.lands.length}성</span>
                                             <span className="mx-2 text-gray-300">|</span>
-                                            <span className="text-yellow-600 font-bold">{p.coins}💰</span>
+                                            <span className="text-yellow-600 font-bold">{p.coins}금</span>
                                         </div>
                                     </td>
                                     <td className="px-4 py-3 text-center">
-                                        {p.lastAnswerCorrect === true && <span className="inline-block bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">⭕ 정답 (+1💰)</span>}
+                                        {p.lastAnswerCorrect === true && <span className="inline-block bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">⭕ 정답 (+1금)</span>}
                                         {p.lastAnswerCorrect === false && <span className="inline-block bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs font-bold">❌ 오답</span>}
                                         {p.lastAnswerCorrect === undefined && <span className="text-gray-400">-</span>}
                                     </td>
@@ -93,7 +140,7 @@ const LobbyView = ({
   <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-8">
     <div className="text-center">
       <h2 className="text-4xl font-extrabold text-indigo-900 mb-2 tracking-tight">방 코드: <span className="text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border-2 border-indigo-100">{roomCode}</span></h2>
-      <p className="text-gray-500 text-lg">학생들이 입장하기를 기다리고 있습니다...</p>
+      <p className="text-gray-500 text-lg">전국의 영웅들이 모이기를 기다리고 있습니다...</p>
       {connectionStatus && <p className="text-sm text-orange-600 mt-2 font-mono font-bold bg-orange-50 inline-block px-2 py-1 rounded">{connectionStatus}</p>}
     </div>
     
@@ -132,11 +179,11 @@ const LobbyView = ({
             className="w-full text-xl py-4 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
             variant="success"
           >
-            게임 시작 ({players.length}명 대기중)
+            천하 통일 전쟁 시작 ({players.length}명 대기중)
           </Button>
       </div>
     )}
-    {!isHost && <div className="text-indigo-600 animate-pulse font-bold text-lg">선생님이 곧 게임을 시작합니다...</div>}
+    {!isHost && <div className="text-indigo-600 animate-pulse font-bold text-lg">군주님이 곧 전쟁을 선포합니다...</div>}
   </div>
 );
 
@@ -158,7 +205,7 @@ const QuizView = ({ quiz, timeRemaining, isHost, onAnswer }: { quiz: Quiz, timeR
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white rounded-2xl shadow-xl border-t-8 border-indigo-500">
       <div className="flex justify-between items-center mb-6">
-        <span className="text-sm font-bold uppercase tracking-wider text-gray-500 bg-gray-100 px-3 py-1 rounded-full">현재 문제</span>
+        <span className="text-sm font-bold uppercase tracking-wider text-gray-500 bg-gray-100 px-3 py-1 rounded-full">지략 대결</span>
         <span className={`text-3xl font-mono font-bold ${timeRemaining < 5 ? 'text-red-500 animate-pulse' : 'text-indigo-600'}`}>
           {timeRemaining}초
         </span>
@@ -192,16 +239,16 @@ const QuizView = ({ quiz, timeRemaining, isHost, onAnswer }: { quiz: Quiz, timeR
             disabled={selectedIdx === null || isSubmitted}
             className="w-full sm:w-auto px-8 py-3 text-lg"
           >
-            {isSubmitted ? '제출 완료! (다른 친구들 기다리는 중...)' : '정답 제출하기'}
+            {isSubmitted ? '제출 완료! (다른 군주 기다리는 중...)' : '정답 제출하기'}
           </Button>
-          {isSubmitted && <p className="mt-4 text-gray-500 animate-pulse">모든 친구들이 제출하면 바로 넘어갑니다.</p>}
+          {isSubmitted && <p className="mt-4 text-gray-500 animate-pulse">모든 군주가 답을 적으면 전쟁 준비 단계로 넘어갑니다.</p>}
         </div>
       )}
 
       {isHost && (
           <div className="mt-6 text-center">
              <p className="text-gray-400 italic mb-2">진행자 화면: 정답을 선택할 수 없습니다.</p>
-             <p className="text-indigo-600 font-bold">학생들이 모두 제출하면 자동으로 다음으로 넘어갑니다.</p>
+             <p className="text-indigo-600 font-bold">군주들이 모두 답을 적으면 자동으로 넘어갑니다.</p>
           </div>
       )}
     </div>
@@ -226,17 +273,19 @@ const GuestActionView = ({
 
     return (
         <div className="p-4 max-w-4xl mx-auto pb-24">
+          <PhaseVisual phase={gameState.phase} />
+
           <div className="bg-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center sticky top-0 z-20 border-b-4 border-indigo-100">
              <div>
-               <div className="text-xs text-gray-500 font-bold">보유 코인</div>
+               <div className="text-xs text-gray-500 font-bold">국고 (군자금)</div>
                <div className="text-2xl font-bold text-yellow-500 flex items-center drop-shadow-sm">
-                 💰 {me.coins}
+                 💰 {me.coins}금
                </div>
              </div>
              <div className="text-right">
                <div className="text-xs text-gray-500 font-bold">퀴즈 결과</div>
                <div className={`font-bold text-lg ${me.lastAnswerCorrect ? 'text-green-600' : 'text-red-500'}`}>
-                 {me.lastAnswerCorrect ? '정답! (+1 코인)' : '오답'}
+                 {me.lastAnswerCorrect ? '승리! (+1금)' : '패배'}
                </div>
              </div>
           </div>
@@ -244,32 +293,32 @@ const GuestActionView = ({
           {!actionLocked ? (
             <div className="space-y-6">
               <div className="bg-blue-50 p-4 rounded text-center text-sm text-blue-800 font-bold mb-2">
-                 {me.lastAnswerCorrect ? "정답 보너스: 공격 2회 또는 방어 가능!" : "오답 페널티: 공격 1회만 가능 (방어 불가)"}
+                 {me.lastAnswerCorrect ? "승전보: 공격 2회 또는 방어 태세 가능!" : "패전: 공격 1회만 가능 (방어 불가)"}
               </div>
 
               {/* Shop Section */}
               <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100">
-                 <h3 className="font-bold text-indigo-900 mb-3 flex items-center gap-2">🛒 아이템 상점</h3>
+                 <h3 className="font-bold text-indigo-900 mb-3 flex items-center gap-2">🛒 병법서 및 영토 매입</h3>
                  <div className="flex gap-2">
                     <Button 
                       disabled={me.coins < COIN_COSTS.PIERCE_DEFENSE}
                       onClick={() => onShopItemSelect(pendingShopItem === 'PIERCE' ? undefined : 'PIERCE')}
-                      className={`text-sm flex-1 ${pendingShopItem === 'PIERCE' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
+                      className={`text-sm flex-1 ${pendingShopItem === 'PIERCE' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700 shadow-inner' : ''}`}
                     >
-                      {pendingShopItem === 'PIERCE' ? '✅ 방어 관통 선택됨' : `방어 관통 (${COIN_COSTS.PIERCE_DEFENSE}💰)`}
+                      {pendingShopItem === 'PIERCE' ? '✅ 방어 관통 선택됨' : `방어 관통 (${COIN_COSTS.PIERCE_DEFENSE}금)`}
                     </Button>
                     <Button 
                       disabled={me.coins < COIN_COSTS.BUY_LAND}
                       onClick={() => onShopItemSelect(pendingShopItem === 'BUY_LAND' ? undefined : 'BUY_LAND')}
-                      className={`text-sm flex-1 ${pendingShopItem === 'BUY_LAND' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
+                      className={`text-sm flex-1 ${pendingShopItem === 'BUY_LAND' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700 shadow-inner' : ''}`}
                     >
-                       {pendingShopItem === 'BUY_LAND' ? '✅ 빈 땅 구매 선택됨' : `빈 땅 구매 (${COIN_COSTS.BUY_LAND}💰)`}
+                       {pendingShopItem === 'BUY_LAND' ? '✅ 빈 땅 구매 선택됨' : `빈 땅 구매 (${COIN_COSTS.BUY_LAND}금)`}
                     </Button>
                  </div>
                  {pendingShopItem === 'BUY_LAND' && (
                     <div className="mt-3 bg-white p-3 rounded text-sm text-center border border-indigo-200 text-indigo-700 font-bold">
                        💰 빈 땅 구매가 예약되었습니다! (라운드 종료 시 무작위 획득)<br/>
-                       <span className="text-xs font-normal text-gray-500">공격도 함께 할 수 있습니다.</span>
+                       <span className="text-xs font-normal text-gray-500">주의: 구매를 선택해도 다른 땅을 공격할 수 있습니다.</span>
                     </div>
                  )}
               </div>
@@ -277,7 +326,7 @@ const GuestActionView = ({
               <div className="flex justify-center gap-4">
                 <div className="text-center w-full">
                   <p className="text-sm font-semibold mb-2 bg-indigo-100 inline-block px-3 py-1 rounded-full text-indigo-800">
-                    공격할 땅 선택 ({selectedLandIds.length}/{allowedAttacks})
+                    공격할 적의 영토 선택 ({selectedLandIds.length}/{allowedAttacks})
                   </p>
                   <GameMap 
                     lands={gameState.lands} 
@@ -292,7 +341,7 @@ const GuestActionView = ({
                     className="mt-6 w-full py-3 text-lg shadow-md"
                     disabled={selectedLandIds.length === 0 && pendingShopItem !== 'BUY_LAND'}
                   >
-                    {selectedLandIds.length > 0 ? '⚔️ 공격 확정' : (pendingShopItem === 'BUY_LAND' ? '💰 구매 확정' : '행동 선택 필요')}
+                    {selectedLandIds.length > 0 ? '⚔️ 공격 개시' : (pendingShopItem === 'BUY_LAND' ? '💰 구매 확정 및 대기' : '행동을 선택하세요')}
                   </Button>
                 </div>
               </div>
@@ -301,7 +350,7 @@ const GuestActionView = ({
                 <div className="text-center border-t-2 border-dashed border-gray-300 pt-6 mt-4">
                   <p className="mb-3 text-gray-500 font-bold">- 또는 -</p>
                   <Button onClick={handleDefend} variant="secondary" className="w-full border-2 border-indigo-200 py-3 text-lg font-bold text-indigo-700 hover:bg-indigo-50">
-                    🛡️ 방어하기 (공격 막기)
+                    🛡️ 철벽 방어 (공격 대신 수비)
                   </Button>
                 </div>
               )}
@@ -309,8 +358,8 @@ const GuestActionView = ({
           ) : (
             <div className="text-center py-20 bg-white rounded-xl shadow-lg border-2 border-indigo-50">
               <div className="text-5xl mb-4">🔒</div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">전략 제출 완료!</h3>
-              <p className="text-gray-500">다른 친구들이 선택할 때까지 기다려주세요...</p>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">작전 명령 전달 완료!</h3>
+              <p className="text-gray-500">다른 군주들이 작전을 짤 때까지 대기하십시오...</p>
             </div>
           )}
         </div>
@@ -704,7 +753,7 @@ const App: React.FC = () => {
       round: 1,
       currentQuizIndex: 0,
       timer: prev.quizDuration,
-      logs: ['게임 시작! 1라운드 시작'],
+      logs: ['📢 제 1 라운드 시작!', '게임이 시작되었습니다.'],
       lastRoundEvents: []
     }));
 
@@ -794,7 +843,7 @@ const App: React.FC = () => {
         round: prev.round + 1,
         timer: prev.quizDuration,
         lastRoundEvents: [],
-        logs: [`${prev.round + 1}라운드 시작!`, ...prev.logs]
+        logs: [`📢 제 ${prev.round + 1} 라운드 시작!`, ...prev.logs]
       };
     });
     startTimer(gameState.quizDuration, () => endQuizPhase());
@@ -894,9 +943,11 @@ const App: React.FC = () => {
   // -- Render Helpers --
 
   const renderHostDashboard = () => (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border-l-4 border-indigo-500">
-        <h1 className="text-2xl font-bold text-indigo-900">진행자 (선생님) 대시보드</h1>
+    <div className={`p-6 max-w-6xl mx-auto space-y-6 transition-colors duration-500 rounded-2xl ${gameState.phase === 'ACTION_SELECT' ? 'bg-red-100/50' : ''}`}>
+      <div className={`flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border-l-4 ${gameState.phase === 'ACTION_SELECT' ? 'border-red-500' : 'border-indigo-500'}`}>
+        <h1 className="text-2xl font-bold text-indigo-900 flex items-center gap-2">
+            {gameState.phase === 'ACTION_SELECT' ? '⚔️' : '🏰'} 진행자 (선생님) 대시보드
+        </h1>
         <div className="flex gap-4">
            <div className="text-right">
              <div className="text-xs text-gray-500">방 코드</div>
@@ -909,12 +960,14 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      <PhaseVisual phase={gameState.phase} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white p-2 rounded-xl shadow-sm">
              <div className="mb-2 text-sm font-semibold text-gray-500 px-2 flex justify-between">
-                <span>실시간 땅 현황</span>
-                <span>총 땅 개수: {gameState.totalLands}</span>
+                <span>실시간 천하 지도</span>
+                <span>총 영토: {gameState.totalLands}</span>
              </div>
              <GameMap 
                 lands={gameState.lands} 
@@ -924,7 +977,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="bg-white p-4 rounded-xl shadow-sm h-64 overflow-y-auto">
-            <h3 className="font-bold text-gray-700 mb-2 border-b pb-2">게임 로그</h3>
+            <h3 className="font-bold text-gray-700 mb-2 border-b pb-2">실록 (게임 로그)</h3>
             <ul className="text-sm space-y-2">
               {gameState.logs.slice(0).reverse().map((log, i) => (
                 <li key={i} className="text-gray-600 border-b border-gray-100 pb-1 last:border-0">{log}</li>
@@ -1019,7 +1072,7 @@ const App: React.FC = () => {
             {gameState.phase === 'QUIZ' && (
                <div className="text-center py-8">
                  <div className="text-6xl font-black text-indigo-600 mb-4 animate-pulse">{gameState.timer}</div>
-                 <p className="text-lg font-medium text-gray-600">학생들이 문제를 풀고 있습니다...</p>
+                 <p className="text-lg font-medium text-gray-600">군주들이 지략을 겨루고 있습니다...</p>
                  <div className="mt-8 flex gap-2 justify-center">
                     <Button onClick={() => addTime(5)} className="bg-blue-500 hover:bg-blue-600 text-sm">⏱️ +5초</Button>
                     <Button className="bg-gray-400 hover:bg-gray-500 text-sm" onClick={() => endQuizPhase()}>퀴즈 강제 종료</Button>
@@ -1029,8 +1082,8 @@ const App: React.FC = () => {
 
             {gameState.phase === 'ACTION_SELECT' && (
                <div className="text-center py-8">
-                 <div className="text-6xl font-black text-indigo-600 mb-4 animate-pulse">{gameState.timer}</div>
-                 <p className="text-lg font-medium text-gray-600">전략을 선택하고 있습니다...</p>
+                 <div className="text-6xl font-black text-red-600 mb-4 animate-pulse">{gameState.timer}</div>
+                 <p className="text-lg font-medium text-red-800 font-bold">⚠️ 전쟁 준비 단계 (전략 수립 중)</p>
                  <div className="mt-8 flex gap-2 justify-center">
                     <Button onClick={() => addTime(5)} className="bg-blue-500 hover:bg-blue-600 text-sm">⏱️ +5초</Button>
                     <Button className="bg-gray-400 hover:bg-gray-500 text-sm" onClick={() => resolveRound()}>결과 바로 보기</Button>
@@ -1041,14 +1094,14 @@ const App: React.FC = () => {
             {gameState.phase === 'ROUND_RESULT' && (
                <div className="text-center py-8">
                  <p className="mb-4 text-xl font-bold text-green-600">외교 타임 (결과 확인 및 협상)</p>
-                 <p className="text-sm text-gray-500 mb-6">학생들이 서로 대화하며 동맹을 맺거나 협상하는 시간입니다.</p>
+                 <p className="text-sm text-gray-500 mb-6">서로 대화하며 동맹을 맺거나 협상하는 시간입니다.</p>
                  <Button onClick={nextRound} className="w-full py-4 text-lg shadow-lg animate-bounce">다음 라운드 시작 ▶</Button>
                </div>
             )}
             
             {gameState.phase === 'GAME_OVER' && (
               <div className="text-center py-8">
-                <h2 className="text-3xl font-bold text-indigo-600 mb-4">게임 종료!</h2>
+                <h2 className="text-3xl font-bold text-indigo-600 mb-4">천하 통일 전쟁 종료!</h2>
                 <Button onClick={() => window.location.reload()} variant="secondary">로비로 돌아가기</Button>
               </div>
             )}
@@ -1113,6 +1166,7 @@ const App: React.FC = () => {
     if (gameState.phase === 'QUIZ') {
       return (
         <div className="p-4 pt-10">
+          <PhaseVisual phase="QUIZ" />
           <QuizView 
             quiz={gameState.quizzes[gameState.currentQuizIndex]}
             timeRemaining={gameState.timer}
@@ -1137,6 +1191,12 @@ const App: React.FC = () => {
             alert("우리 땅은 공격할 수 없습니다.");
             return;
         }
+        
+        // Prevent selecting empty land (Rule Change: Attack is PvP only)
+        if (!land.ownerId) {
+            alert("빈 땅은 공격할 수 없습니다. '빈 땅 구매' 아이템을 이용하세요.");
+            return;
+        }
 
         if (selectedLandIds.includes(id)) {
           setSelectedLandIds(prev => prev.filter(lid => lid !== id));
@@ -1144,8 +1204,7 @@ const App: React.FC = () => {
           if (selectedLandIds.length < allowedAttacks) {
             setSelectedLandIds(prev => [...prev, id]);
           } else {
-             // Smart replace: If max reached, replace logic.
-             // If 1 allowed, just replace. If > 1, replace first selected (FIFO-ish).
+             // FIFO Selection: If max reached, remove first selected and add new one
              if (allowedAttacks === 1) {
                  setSelectedLandIds([id]);
              } else {
@@ -1187,6 +1246,8 @@ const App: React.FC = () => {
 
        return (
          <div className="p-4 space-y-4 max-w-4xl mx-auto">
+           <PhaseVisual phase={gameState.phase === 'GAME_OVER' ? 'ROUND_RESULT' : gameState.phase} />
+
            <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
              {gameState.phase === 'ROUND_RESULT' ? '🤝 외교 타임' : '게임 종료'}
            </h2>
