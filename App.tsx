@@ -101,8 +101,8 @@ const SubmissionStatusBoard = ({ players, phase }: { players: Player[], phase: G
                                 ? 'bg-green-50 border-green-300 shadow-sm scale-105' 
                                 : 'bg-gray-50 border-gray-200 opacity-80'}
                         `}>
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-white font-bold shadow-sm ${p.color}`}>
-                                {p.avatar}
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-white font-bold shadow-sm ${p.color} overflow-hidden`}>
+                                <img src={p.avatar} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             </div>
                             <span className={`text-sm font-bold truncate w-full text-center ${isSubmitted ? 'text-green-800' : 'text-gray-500'}`}>
                                 {p.name}
@@ -164,8 +164,8 @@ const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GameP
                             return (
                                 <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-4 py-3 flex items-center gap-2">
-                                        <div className={`w-8 h-8 rounded-full ${p.color} flex items-center justify-center shadow-sm text-xs text-white font-bold`}>
-                                            {p.avatar}
+                                        <div className={`w-8 h-8 rounded-full ${p.color} flex items-center justify-center shadow-sm text-xs text-white font-bold overflow-hidden`}>
+                                             <img src={p.avatar} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                         </div>
                                         <span className={`font-bold ${p.isEliminated ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
                                             {p.name}
@@ -247,7 +247,9 @@ const Leaderboard = ({ players, myPlayerId }: { players: Player[], myPlayerId?: 
                                     {idx + 1 === 1 ? '🥇' : idx + 1 === 2 ? '🥈' : idx + 1 === 3 ? '🥉' : idx + 1}
                                 </td>
                                 <td className="px-4 py-3 font-bold flex items-center gap-2">
-                                    <span className="text-xl">{p.avatar}</span>
+                                    <div className={`w-8 h-8 rounded-full ${p.color} flex items-center justify-center shadow-sm overflow-hidden`}>
+                                        <img src={p.avatar} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                    </div>
                                     {p.name}
                                     {p.isEliminated && <span className="text-xs text-red-500 ml-2">(패배)</span>}
                                 </td>
@@ -291,8 +293,8 @@ const LobbyView = ({
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
       {players.map(p => (
         <div key={p.id} className="bg-white p-4 rounded-xl shadow-md flex items-center space-x-3 animate-fade-in border-b-4 border-indigo-100">
-          <div className={`w-10 h-10 rounded-full ${p.color} flex items-center justify-center text-xl shadow-sm text-white font-bold`}>
-            {p.avatar}
+          <div className={`w-10 h-10 rounded-full ${p.color} flex items-center justify-center text-xl shadow-sm text-white font-bold overflow-hidden`}>
+             <img src={p.avatar} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
           <span className="font-bold text-gray-700">{p.name}</span>
         </div>
@@ -1150,10 +1152,10 @@ const App: React.FC = () => {
   // -- Render Helpers --
 
   const renderHostDashboard = () => (
-    <div className={`p-6 max-w-6xl mx-auto space-y-6 transition-colors duration-500 rounded-2xl ${gameState.phase === 'ACTION_SELECT' ? 'bg-red-100/50' : ''}`}>
-      <div className={`flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border-l-4 ${gameState.phase === 'ACTION_SELECT' ? 'border-red-500' : 'border-indigo-500'}`}>
+    <div className={`p-6 max-w-6xl mx-auto space-y-6 transition-colors duration-500 rounded-2xl ${gameState.phase === 'ACTION_SELECT' ? 'bg-red-100/50' : ''} ${gameState.phase === 'ROUND_RESULT' ? 'bg-yellow-100/50' : ''}`}>
+      <div className={`flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border-l-4 ${gameState.phase === 'ACTION_SELECT' ? 'border-red-500' : gameState.phase === 'ROUND_RESULT' ? 'border-yellow-500' : 'border-indigo-500'}`}>
         <h1 className="text-2xl font-bold text-indigo-900 flex items-center gap-2">
-            {gameState.phase === 'ACTION_SELECT' ? '⚔️' : '🏰'} 진행자 (선생님) 대시보드
+            {gameState.phase === 'ACTION_SELECT' ? '⚔️' : gameState.phase === 'ROUND_RESULT' ? '🤝' : '🏰'} 진행자 (선생님) 대시보드
         </h1>
         <div className="flex gap-4">
            <div className="text-right">
@@ -1239,7 +1241,7 @@ const App: React.FC = () => {
                      <label className="text-sm font-bold text-indigo-900 block mb-1">맵 크기 (칸 수)</label>
                      <div className="flex items-center gap-2">
                        <input 
-                         type="range" min="12" max="40" step="1"
+                         type="range" min="12" max="60" step="1"
                          className="w-full accent-indigo-600"
                          value={gameState.totalLands}
                          onChange={(e) => setGameState({...gameState, totalLands: parseInt(e.target.value)})}
@@ -1323,6 +1325,11 @@ const App: React.FC = () => {
                             if (evt.type === 'BOUGHT') {
                                 return <li key={i} className="text-blue-700">💰 {evt.attackerName}님이 {evt.landId+1}번 빈 땅을 구매함</li>;
                             } else if (evt.type === 'CONQUERED') {
+                                // Conflict check
+                                const allAttackers = evt.allAttackers || [];
+                                if (allAttackers.length > 1) {
+                                     return <li key={i} className="text-red-700 font-bold">⚔️ [{allAttackers.join(', ')}] 격돌 ➜ 승자: {evt.attackerName} ({evt.landId+1}번 땅)</li>;
+                                }
                                 return <li key={i} className="text-red-700">⚔️ {evt.attackerName}님이 {evt.defenderName}의 {evt.landId+1}번 땅을 점령함</li>;
                             } else if (evt.type === 'DEFENDED') {
                                 return <li key={i} className="text-green-700">🛡️ {evt.defenderName}님이 {evt.landId+1}번 땅 방어 성공</li>;
@@ -1481,7 +1488,11 @@ const App: React.FC = () => {
     }
 
     if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') {
-       const myAttacks = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type !== 'BOUGHT');
+       // Filter attacks where I was the WINNER
+       const myWins = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type !== 'BOUGHT');
+       // Filter attacks where I participated (was in allAttackers) but LOST (winner != me)
+       const myLosses = gameState.lastRoundEvents.filter(e => e.allAttackers && e.allAttackers.includes(me.name) && e.attackerName !== me.name);
+
        const myPurchases = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type === 'BOUGHT');
        const attackedMe = gameState.lastRoundEvents.filter(e => e.defenderName === me.name);
 
@@ -1502,11 +1513,33 @@ const App: React.FC = () => {
              <div className="space-y-3 text-sm">
                <div className="bg-white p-3 rounded border border-yellow-100">
                  <p className="font-bold text-blue-600 mb-1">⚔️ 내가 공격한 곳:</p>
-                 <p className="text-gray-700">
-                   {myAttacks.length > 0 
-                     ? myAttacks.map((e, idx) => <span key={idx} className="inline-block mr-2">Target: {e.defenderName || '빈 땅'}(#{e.landId+1}){idx < myAttacks.length-1 ? ',' : ''}</span>) 
-                     : '없음'}
-                 </p>
+                 <div className="text-gray-700 space-y-1">
+                   {myWins.length === 0 && myLosses.length === 0 && <span>없음</span>}
+                   
+                   {/* Successful Attacks */}
+                   {myWins.map((e, idx) => {
+                       const isConflict = (e.allAttackers?.length || 0) > 1;
+                       return (
+                           <div key={`win-${idx}`} className="flex items-center gap-2">
+                               <span className="text-green-600 font-bold">✅ 승리:</span>
+                               <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
+                               {isConflict ? 
+                                   <span className="text-xs bg-orange-100 text-orange-700 px-2 rounded-full font-bold">치열한 전쟁 끝에 땅을 획득!</span> 
+                                   : <span className="text-xs text-gray-500">(점령 성공)</span>
+                               }
+                           </div>
+                       );
+                   })}
+                   
+                   {/* Failed Attacks (Lost conflict) */}
+                   {myLosses.map((e, idx) => (
+                       <div key={`loss-${idx}`} className="flex items-center gap-2">
+                           <span className="text-red-500 font-bold">❌ 패배:</span>
+                           <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
+                           <span className="text-xs bg-gray-200 text-gray-600 px-2 rounded-full font-bold">다른 나라의 국력에 밀림...</span>
+                       </div>
+                   ))}
+                 </div>
                </div>
                <div className="bg-white p-3 rounded border border-yellow-100">
                  <p className="font-bold text-purple-600 mb-1">💰 내가 구매한 곳:</p>

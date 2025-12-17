@@ -78,7 +78,13 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
            p.coins -= COIN_COSTS.BUY_LAND;
            messages.push(`💰 ${p.name}: 빈 땅(No.${target.id + 1}) 구매 성공!`);
            // Use BOUGHT type to distinguish from attacks
-           combatEvents.push({ landId: target.id, type: 'BOUGHT', attackerName: p.name, defenderName: '빈 땅' });
+           combatEvents.push({ 
+               landId: target.id, 
+               type: 'BOUGHT', 
+               attackerName: p.name, 
+               defenderName: '빈 땅',
+               allAttackers: [p.name]
+           });
         } else {
            messages.push(`💸 ${p.name}: 빈 땅이 없어 구매 취소 (코인 반환).`);
            // Refund implies simply not deducting
@@ -112,9 +118,7 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
     const attacks = attacksOnLand[landId];
     const land = nextState.lands[landId];
     
-    // NOTE: We must find the owner based on the state BEFORE this round's modifications (which is partially nextState here)
-    // Since we processed BUY_LAND above, some empty lands might have owners now. 
-    // However, attacks on newly bought lands are valid.
+    // NOTE: We must find the owner based on the state BEFORE this round's modifications
     const currentOwner = nextState.players.find(p => p.id === land.ownerId);
 
     // Filter out blocked attacks
@@ -128,11 +132,11 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
       if (currentOwner.isDefending) {
         if (atk.hasPierce) {
           messages.push(`💥 ${landId + 1}번 땅: 방어 관통!`);
-          combatEvents.push({ landId, type: 'PIERCED', defenderName: currentOwner.name });
+          combatEvents.push({ landId, type: 'PIERCED', defenderName: currentOwner.name, allAttackers: [] }); // Placeholder, strictly for visual
           return true;
         } else {
           messages.push(`🛡️ ${landId + 1}번 땅: ${currentOwner.name}님이 방어 성공!`);
-          combatEvents.push({ landId, type: 'DEFENDED', defenderName: currentOwner.name });
+          combatEvents.push({ landId, type: 'DEFENDED', defenderName: currentOwner.name, allAttackers: [] });
           return false;
         }
       }
@@ -145,20 +149,34 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
       const winnerId = validAttacks[winnerIndex].attackerId;
       const winner = nextState.players.find(p => p.id === winnerId);
       
+      const allAttackerNames = validAttacks.map(atk => {
+          const p = nextState.players.find(pl => pl.id === atk.attackerId);
+          return p ? p.name : '?';
+      });
+
       if (winner) {
         // Change ownership
         const oldOwnerName = currentOwner ? currentOwner.name : "빈 땅";
         land.ownerId = winnerId;
-        messages.push(`🚩 ${winner.name}님이 ${oldOwnerName}의 땅(${landId + 1})을 점령!`);
+        
+        // Conflict Message Generation
+        if (validAttacks.length > 1) {
+            messages.push(`⚔️ ${landId + 1}번 땅에서 격전 발생! (${allAttackerNames.join(', ')})`);
+            messages.push(`🚩 ${winner.name}님이 치열한 전쟁 끝에 승리하여 땅을 획득했습니다!`);
+        } else {
+            messages.push(`🚩 ${winner.name}님이 ${oldOwnerName}의 땅(${landId + 1})을 점령!`);
+        }
+
         combatEvents.push({ 
             landId, 
             type: 'CONQUERED', 
             attackerName: winner.name, 
-            defenderName: oldOwnerName 
+            defenderName: oldOwnerName,
+            allAttackers: allAttackerNames
         });
       }
     } else if (attacks.length > 0 && !combatEvents.find(e => e.landId === landId && e.type === 'DEFENDED')) {
-       // Silent failure logic if needed
+       // Silent failure logic if needed (e.g. everyone defended against each other? unlikely in this ruleset)
     }
   });
 
