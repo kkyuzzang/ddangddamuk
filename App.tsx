@@ -220,20 +220,9 @@ const GuestActionView = ({
     handleDefend,
     canDefend,
     allowedAttacks,
-    onShopItemSelect
+    onShopItemSelect,
+    pendingShopItem
 }: any) => {
-    // Local state for Shop
-    const [pendingShopItem, setPendingShopItem] = useState<'PIERCE' | 'BUY_LAND' | undefined>();
-
-    // Effect to reset local shop item when phase changes or lock happens
-    useEffect(() => {
-        if (actionLocked) setPendingShopItem(undefined);
-    }, [actionLocked]);
-
-    // Pass shop item selection up to parent/handler
-    const handleBuyLandConfirm = () => {
-         onShopItemSelect('BUY_LAND');
-    };
 
     return (
         <div className="p-4 max-w-4xl mx-auto pb-24">
@@ -263,68 +252,58 @@ const GuestActionView = ({
                  <h3 className="font-bold text-indigo-900 mb-3 flex items-center gap-2">🛒 아이템 상점</h3>
                  <div className="flex gap-2">
                     <Button 
-                      disabled={me.coins < COIN_COSTS.PIERCE_DEFENSE || pendingShopItem === 'PIERCE'}
-                      onClick={() => {
-                          const newItem = pendingShopItem === 'PIERCE' ? undefined : 'PIERCE';
-                          setPendingShopItem(newItem);
-                          onShopItemSelect(newItem);
-                      }}
+                      disabled={me.coins < COIN_COSTS.PIERCE_DEFENSE}
+                      onClick={() => onShopItemSelect(pendingShopItem === 'PIERCE' ? undefined : 'PIERCE')}
                       className={`text-sm flex-1 ${pendingShopItem === 'PIERCE' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
                     >
-                      방어 관통 (3💰)
+                      {pendingShopItem === 'PIERCE' ? '✅ 방어 관통 선택됨' : `방어 관통 (${COIN_COSTS.PIERCE_DEFENSE}💰)`}
                     </Button>
                     <Button 
-                      disabled={me.coins < COIN_COSTS.BUY_LAND || pendingShopItem === 'BUY_LAND'}
-                      onClick={() => setPendingShopItem('BUY_LAND')}
+                      disabled={me.coins < COIN_COSTS.BUY_LAND}
+                      onClick={() => onShopItemSelect(pendingShopItem === 'BUY_LAND' ? undefined : 'BUY_LAND')}
                       className={`text-sm flex-1 ${pendingShopItem === 'BUY_LAND' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
                     >
-                      빈 땅 구매 (2💰)
+                       {pendingShopItem === 'BUY_LAND' ? '✅ 빈 땅 구매 선택됨' : `빈 땅 구매 (${COIN_COSTS.BUY_LAND}💰)`}
                     </Button>
                  </div>
                  {pendingShopItem === 'BUY_LAND' && (
-                    <div className="mt-3 bg-white p-3 rounded text-sm text-center">
-                       <p className="mb-2">빈 땅을 무작위로 하나 구매합니다.</p>
-                       <Button onClick={handleBuyLandConfirm} className="w-full bg-green-600 hover:bg-green-700">
-                          구매 확정
-                       </Button>
+                    <div className="mt-3 bg-white p-3 rounded text-sm text-center border border-indigo-200 text-indigo-700 font-bold">
+                       💰 빈 땅 구매가 예약되었습니다! (라운드 종료 시 무작위 획득)<br/>
+                       <span className="text-xs font-normal text-gray-500">공격도 함께 할 수 있습니다.</span>
                     </div>
                  )}
               </div>
 
-              {pendingShopItem !== 'BUY_LAND' && (
-                <>
-                  <div className="flex justify-center gap-4">
-                    <div className="text-center w-full">
-                      <p className="text-sm font-semibold mb-2 bg-indigo-100 inline-block px-3 py-1 rounded-full text-indigo-800">
-                        공격할 땅 선택 ({selectedLandIds.length}/{allowedAttacks})
-                      </p>
-                      <GameMap 
-                        lands={gameState.lands} 
-                        players={gameState.players} 
-                        myPlayerId={myPlayerId}
-                        selectable={true}
-                        onLandClick={toggleLandSelection}
-                        selectedLandIds={selectedLandIds}
-                      />
-                      <Button 
-                        onClick={handleConfirmAttack} 
-                        className="mt-6 w-full py-3 text-lg shadow-md"
-                        disabled={selectedLandIds.length === 0}
-                      >
-                        ⚔️ 공격 확정
-                      </Button>
-                    </div>
-                  </div>
+              <div className="flex justify-center gap-4">
+                <div className="text-center w-full">
+                  <p className="text-sm font-semibold mb-2 bg-indigo-100 inline-block px-3 py-1 rounded-full text-indigo-800">
+                    공격할 땅 선택 ({selectedLandIds.length}/{allowedAttacks})
+                  </p>
+                  <GameMap 
+                    lands={gameState.lands} 
+                    players={gameState.players} 
+                    myPlayerId={myPlayerId}
+                    selectable={true}
+                    onLandClick={toggleLandSelection}
+                    selectedLandIds={selectedLandIds}
+                  />
+                  <Button 
+                    onClick={handleConfirmAttack} 
+                    className="mt-6 w-full py-3 text-lg shadow-md"
+                    disabled={selectedLandIds.length === 0 && pendingShopItem !== 'BUY_LAND'}
+                  >
+                    {selectedLandIds.length > 0 ? '⚔️ 공격 확정' : (pendingShopItem === 'BUY_LAND' ? '💰 구매 확정' : '행동 선택 필요')}
+                  </Button>
+                </div>
+              </div>
 
-                  {canDefend && (
-                    <div className="text-center border-t-2 border-dashed border-gray-300 pt-6 mt-4">
-                      <p className="mb-3 text-gray-500 font-bold">- 또는 -</p>
-                      <Button onClick={handleDefend} variant="secondary" className="w-full border-2 border-indigo-200 py-3 text-lg font-bold text-indigo-700 hover:bg-indigo-50">
-                        🛡️ 방어하기 (공격 막기)
-                      </Button>
-                    </div>
-                  )}
-                </>
+              {canDefend && (
+                <div className="text-center border-t-2 border-dashed border-gray-300 pt-6 mt-4">
+                  <p className="mb-3 text-gray-500 font-bold">- 또는 -</p>
+                  <Button onClick={handleDefend} variant="secondary" className="w-full border-2 border-indigo-200 py-3 text-lg font-bold text-indigo-700 hover:bg-indigo-50">
+                    🛡️ 방어하기 (공격 막기)
+                  </Button>
+                </div>
               )}
             </div>
           ) : (
@@ -725,7 +704,7 @@ const App: React.FC = () => {
       round: 1,
       currentQuizIndex: 0,
       timer: prev.quizDuration,
-      logs: ['게임 시작! 1라운드'],
+      logs: ['게임 시작! 1라운드 시작'],
       lastRoundEvents: []
     }));
 
@@ -814,7 +793,8 @@ const App: React.FC = () => {
         currentQuizIndex: nextIdx,
         round: prev.round + 1,
         timer: prev.quizDuration,
-        lastRoundEvents: [] 
+        lastRoundEvents: [],
+        logs: [`${prev.round + 1}라운드 시작!`, ...prev.logs]
       };
     });
     startTimer(gameState.quizDuration, () => endQuizPhase());
@@ -1149,11 +1129,28 @@ const App: React.FC = () => {
       
       const toggleLandSelection = (id: number) => {
         if (actionLocked) return;
+        const land = gameState.lands.find(l => l.id === id);
+        if (!land) return;
+        
+        // Prevent selecting own land
+        if (land.ownerId === myPlayerId) {
+            alert("우리 땅은 공격할 수 없습니다.");
+            return;
+        }
+
         if (selectedLandIds.includes(id)) {
           setSelectedLandIds(prev => prev.filter(lid => lid !== id));
         } else {
           if (selectedLandIds.length < allowedAttacks) {
             setSelectedLandIds(prev => [...prev, id]);
+          } else {
+             // Smart replace: If max reached, replace logic.
+             // If 1 allowed, just replace. If > 1, replace first selected (FIFO-ish).
+             if (allowedAttacks === 1) {
+                 setSelectedLandIds([id]);
+             } else {
+                 setSelectedLandIds(prev => [...prev.slice(1), id]);
+             }
           }
         }
       };
@@ -1179,23 +1176,50 @@ const App: React.FC = () => {
             canDefend={canDefend}
             allowedAttacks={allowedAttacks}
             onShopItemSelect={setPendingShopItem}
+            pendingShopItem={pendingShopItem}
           />
       );
     }
 
     if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') {
+       const myAttacks = gameState.lastRoundEvents.filter(e => e.attackerName === me.name);
+       const attackedMe = gameState.lastRoundEvents.filter(e => e.defenderName === me.name);
+
        return (
          <div className="p-4 space-y-4 max-w-4xl mx-auto">
            <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
              {gameState.phase === 'ROUND_RESULT' ? '🤝 외교 타임' : '게임 종료'}
            </h2>
+           
+           <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 shadow-sm">
+             <h3 className="font-bold text-yellow-800 mb-3 text-lg border-b border-yellow-200 pb-2">📊 이번 라운드 전투 요약</h3>
+             <div className="space-y-3 text-sm">
+               <div className="bg-white p-3 rounded border border-yellow-100">
+                 <p className="font-bold text-blue-600 mb-1">⚔️ 내가 공격한 곳:</p>
+                 <p className="text-gray-700">
+                   {myAttacks.length > 0 
+                     ? myAttacks.map((e, idx) => <span key={idx} className="inline-block mr-2">Goal: {e.defenderName || '빈 땅'}(#{e.landId+1}){idx < myAttacks.length-1 ? ',' : ''}</span>) 
+                     : '없음'}
+                 </p>
+               </div>
+               <div className="bg-white p-3 rounded border border-yellow-100">
+                 <p className="font-bold text-red-600 mb-1">🛡️ 나를 공격한 사람:</p>
+                 <p className="text-gray-700">
+                   {attackedMe.length > 0 
+                     ? [...new Set(attackedMe.map(e => e.attackerName))].map((name, idx, arr) => <span key={idx} className="inline-block mr-2 font-bold">{name}{idx < arr.length-1 ? ',' : ''}</span>) 
+                     : '없음'}
+                 </p>
+               </div>
+             </div>
+           </div>
+
            <GameMap 
              lands={gameState.lands} 
              players={gameState.players} 
              myPlayerId={myPlayerId} 
              combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []}
            />
-           <div className="bg-white p-4 rounded-xl shadow border border-gray-100 max-h-60 overflow-y-auto">
+           <div className="bg-white p-4 rounded-xl shadow border border-gray-100 max-h-40 overflow-y-auto">
              {gameState.logs.slice(-5).map((l, i) => <p key={i} className="text-sm border-b py-2 text-gray-700">{l}</p>)}
            </div>
            <div className="text-center mt-6">

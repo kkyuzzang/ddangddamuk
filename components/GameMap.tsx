@@ -55,18 +55,20 @@ export const GameMap: React.FC<GameMapProps> = ({
           }
         }
 
+        const isDisabled = !selectable || (selectable && isMine);
+
         return (
           <button
             key={land.id}
-            onClick={() => onLandClick && onLandClick(land.id)}
-            disabled={!selectable}
+            onClick={() => onLandClick && !isDisabled && onLandClick(land.id)}
+            disabled={isDisabled}
             className={`
               relative aspect-square rounded-lg border-2 flex flex-col items-center justify-center transition-all duration-300 overflow-hidden
               ${bgColor} 
               ${borderColor}
-              ${isSelected ? 'ring-4 ring-yellow-400 z-10 scale-105' : 'hover:opacity-90'}
-              ${!owner ? 'opacity-80' : ''}
-              ${selectable ? 'cursor-pointer' : 'cursor-default'}
+              ${isSelected ? 'ring-4 ring-yellow-400 z-10 scale-105' : ''}
+              ${!isDisabled ? 'hover:opacity-90 hover:scale-105 cursor-pointer' : 'cursor-not-allowed opacity-90'}
+              ${selectable && isMine ? 'opacity-50 ring-2 ring-gray-400 grayscale' : ''}
               ${animationClass}
             `}
           >
