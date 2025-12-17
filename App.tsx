@@ -1690,6 +1690,20 @@ const App: React.FC = () => {
             {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') && renderGuestDashboard()}
           </div>
         )}
+
+        <div className="mt-12 border-t border-gray-200 pt-6 text-center text-sm text-gray-500 pb-8">
+            <p className="font-bold mb-2 text-gray-700">만든 사람: 경기도 지구과학 교사 뀨짱</p>
+            <div className="flex justify-center items-center gap-3 flex-wrap">
+                <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition hover:underline">
+                    문의: 카카오톡 오픈채팅
+                </a>
+                <span className="text-gray-300">|</span>
+                <a href="https://eduarchive.tistory.com/" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition hover:underline">
+                    블로그: 뀨짱쌤의 교육자료 아카이브
+                </a>
+            </div>
+        </div>
+
       </div>
     </div>
   );
