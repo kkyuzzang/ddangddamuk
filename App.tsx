@@ -208,6 +208,136 @@ const QuizView = ({ quiz, timeRemaining, isHost, onAnswer }: { quiz: Quiz, timeR
   );
 };
 
+// Extracted to avoid Hook Rules Violation in renderGuestDashboard
+const GuestActionView = ({ 
+    me, 
+    gameState, 
+    myPlayerId, 
+    actionLocked, 
+    selectedLandIds, 
+    toggleLandSelection, 
+    handleConfirmAttack, 
+    handleDefend,
+    canDefend,
+    allowedAttacks,
+    onShopItemSelect
+}: any) => {
+    // Local state for Shop
+    const [pendingShopItem, setPendingShopItem] = useState<'PIERCE' | 'BUY_LAND' | undefined>();
+
+    // Effect to reset local shop item when phase changes or lock happens
+    useEffect(() => {
+        if (actionLocked) setPendingShopItem(undefined);
+    }, [actionLocked]);
+
+    // Pass shop item selection up to parent/handler
+    const handleBuyLandConfirm = () => {
+         onShopItemSelect('BUY_LAND');
+    };
+
+    return (
+        <div className="p-4 max-w-4xl mx-auto pb-24">
+          <div className="bg-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center sticky top-0 z-20 border-b-4 border-indigo-100">
+             <div>
+               <div className="text-xs text-gray-500 font-bold">보유 코인</div>
+               <div className="text-2xl font-bold text-yellow-500 flex items-center drop-shadow-sm">
+                 💰 {me.coins}
+               </div>
+             </div>
+             <div className="text-right">
+               <div className="text-xs text-gray-500 font-bold">퀴즈 결과</div>
+               <div className={`font-bold text-lg ${me.lastAnswerCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                 {me.lastAnswerCorrect ? '정답! (+1 코인)' : '오답'}
+               </div>
+             </div>
+          </div>
+
+          {!actionLocked ? (
+            <div className="space-y-6">
+              <div className="bg-blue-50 p-4 rounded text-center text-sm text-blue-800 font-bold mb-2">
+                 {me.lastAnswerCorrect ? "정답 보너스: 공격 2회 또는 방어 가능!" : "오답 페널티: 공격 1회만 가능 (방어 불가)"}
+              </div>
+
+              {/* Shop Section */}
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100">
+                 <h3 className="font-bold text-indigo-900 mb-3 flex items-center gap-2">🛒 아이템 상점</h3>
+                 <div className="flex gap-2">
+                    <Button 
+                      disabled={me.coins < COIN_COSTS.PIERCE_DEFENSE || pendingShopItem === 'PIERCE'}
+                      onClick={() => {
+                          const newItem = pendingShopItem === 'PIERCE' ? undefined : 'PIERCE';
+                          setPendingShopItem(newItem);
+                          onShopItemSelect(newItem);
+                      }}
+                      className={`text-sm flex-1 ${pendingShopItem === 'PIERCE' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
+                    >
+                      방어 관통 (3💰)
+                    </Button>
+                    <Button 
+                      disabled={me.coins < COIN_COSTS.BUY_LAND || pendingShopItem === 'BUY_LAND'}
+                      onClick={() => setPendingShopItem('BUY_LAND')}
+                      className={`text-sm flex-1 ${pendingShopItem === 'BUY_LAND' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
+                    >
+                      빈 땅 구매 (2💰)
+                    </Button>
+                 </div>
+                 {pendingShopItem === 'BUY_LAND' && (
+                    <div className="mt-3 bg-white p-3 rounded text-sm text-center">
+                       <p className="mb-2">빈 땅을 무작위로 하나 구매합니다.</p>
+                       <Button onClick={handleBuyLandConfirm} className="w-full bg-green-600 hover:bg-green-700">
+                          구매 확정
+                       </Button>
+                    </div>
+                 )}
+              </div>
+
+              {pendingShopItem !== 'BUY_LAND' && (
+                <>
+                  <div className="flex justify-center gap-4">
+                    <div className="text-center w-full">
+                      <p className="text-sm font-semibold mb-2 bg-indigo-100 inline-block px-3 py-1 rounded-full text-indigo-800">
+                        공격할 땅 선택 ({selectedLandIds.length}/{allowedAttacks})
+                      </p>
+                      <GameMap 
+                        lands={gameState.lands} 
+                        players={gameState.players} 
+                        myPlayerId={myPlayerId}
+                        selectable={true}
+                        onLandClick={toggleLandSelection}
+                        selectedLandIds={selectedLandIds}
+                      />
+                      <Button 
+                        onClick={handleConfirmAttack} 
+                        className="mt-6 w-full py-3 text-lg shadow-md"
+                        disabled={selectedLandIds.length === 0}
+                      >
+                        ⚔️ 공격 확정
+                      </Button>
+                    </div>
+                  </div>
+
+                  {canDefend && (
+                    <div className="text-center border-t-2 border-dashed border-gray-300 pt-6 mt-4">
+                      <p className="mb-3 text-gray-500 font-bold">- 또는 -</p>
+                      <Button onClick={handleDefend} variant="secondary" className="w-full border-2 border-indigo-200 py-3 text-lg font-bold text-indigo-700 hover:bg-indigo-50">
+                        🛡️ 방어하기 (공격 막기)
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-20 bg-white rounded-xl shadow-lg border-2 border-indigo-50">
+              <div className="text-5xl mb-4">🔒</div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">전략 제출 완료!</h3>
+              <p className="text-gray-500">다른 친구들이 선택할 때까지 기다려주세요...</p>
+            </div>
+          )}
+        </div>
+    );
+};
+
 // -- Main App Component --
 
 const App: React.FC = () => {
@@ -242,6 +372,7 @@ const App: React.FC = () => {
   // Action State (Guest)
   const [selectedLandIds, setSelectedLandIds] = useState<number[]>([]);
   const [actionLocked, setActionLocked] = useState(false);
+  const [pendingShopItem, setPendingShopItem] = useState<'PIERCE' | 'BUY_LAND' | undefined>(); // Hoisted state
 
   // PeerJS Refs
   const peerRef = useRef<Peer | null>(null);
@@ -290,18 +421,13 @@ const App: React.FC = () => {
             // Host: Send PING to all, Remove dead players
             const now = Date.now();
             
-            // 1. Prune disconnected players (timeout 8s)
+            // 1. Prune disconnected players (timeout increased to 15s to prevent accidental drops)
             setGameState(prev => {
                 const activePlayers = prev.players.filter(p => {
-                    // Always keep host if in list (though host usually isn't in players list in this implementation logic unless pushed)
-                    // Actually, host is separate. 
-                    // Check if player has pinged recently.
-                    // First 5 seconds of connection are grace period
                     const lastPing = lastPingMap.current[p.id];
                     if (!lastPing) return true; // New player grace
-                    if (now - lastPing > 8000) {
+                    if (now - lastPing > 15000) {
                         console.log(`Removing inactive player: ${p.name} (${p.id})`);
-                        // Close connection if exists
                         const conn = connectionsRef.current.find(c => c.metadata?.playerId === p.id);
                         if (conn) conn.close();
                         return false;
@@ -323,7 +449,7 @@ const App: React.FC = () => {
             });
 
         } else {
-            // Guest: Check if Host is alive (optional, mostly handled by conn.on('close'))
+            // Guest logic if needed
         }
     }, 2000);
   };
@@ -417,9 +543,11 @@ const App: React.FC = () => {
       conn.on('data', (data: any) => {
         if (data && data.type === 'STATE_UPDATE') {
           setGameState(data.payload);
-          if (data.payload.phase === 'ACTION_SELECT') {
+          // Unlock local state when new action phase starts
+          if (data.payload.phase === 'ACTION_SELECT' && gameState.phase !== 'ACTION_SELECT') {
             setActionLocked(false);
             setSelectedLandIds([]);
+            setPendingShopItem(undefined);
           }
         } else if (data && data.type === 'HEARTBEAT') {
             // Respond to ping
@@ -482,7 +610,6 @@ const App: React.FC = () => {
   };
 
   const handlePlayerJoin = (newPlayer: Player, conn?: DataConnection) => {
-    // Store metadata on connection for cleanup
     if (conn) {
         conn.metadata = { playerId: newPlayer.id };
     }
@@ -546,7 +673,6 @@ const App: React.FC = () => {
         const answeredCount = players.filter(p => p.lastAnswerCorrect !== undefined).length;
         if (answeredCount >= players.length) {
           // If everyone answered, stop timer and end phase immediately
-          // We need to trigger this asynchronously to finish the current state update
           setTimeout(() => {
               if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
               endQuizPhase(newState);
@@ -562,13 +688,10 @@ const App: React.FC = () => {
   // -- Game Actions --
 
   const startGame = () => {
-    // Slice quizzes based on host selection
     const selectedQuizzes = gameState.quizzes.slice(0, targetQuizCount);
-
     const lands = generateMap(gameState.totalLands);
     const landsWithOwners = assignInitialLands(lands, gameState.players);
     
-    // Reset players round state
     const resetPlayers = gameState.players.map(p => ({
         ...p,
         lastAnswerCorrect: undefined,
@@ -577,7 +700,6 @@ const App: React.FC = () => {
         lands: [],
     }));
 
-    // Re-assign lands to update player object
     const finalLands = assignInitialLands(lands, resetPlayers);
 
     setGameState(prev => ({
@@ -611,9 +733,7 @@ const App: React.FC = () => {
     }, 1000);
   };
 
-  // Modified to optionally take a state to transition FROM (for auto-advance)
   const endQuizPhase = (currentStateOverride?: GameState) => {
-    // If called from timer, we use setter. If called from auto-advance, we use the provided state to ensure freshness.
     const transition = (prevState: GameState) => ({
       ...prevState,
       phase: 'ACTION_SELECT' as GamePhase,
@@ -648,7 +768,6 @@ const App: React.FC = () => {
         return { ...prev, phase: 'GAME_OVER' };
       }
       
-      // Reset answer state for next round
       const nextPlayers = prev.players.map(p => ({
           ...p,
           lastAnswerCorrect: undefined,
@@ -668,36 +787,6 @@ const App: React.FC = () => {
       };
     });
     startTimer(gameState.quizDuration, () => endQuizPhase());
-  };
-
-  // CSV Import
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const lines = text.split('\n');
-      const newQuizzes: Quiz[] = [];
-      lines.forEach((line, idx) => {
-        const cols = line.split(',');
-        if (cols.length >= 6) {
-          newQuizzes.push({
-            id: `csv-${idx}`,
-            question: cols[0].trim(),
-            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
-            correctIndex: parseInt(cols[5].trim()) || 0
-          });
-        }
-      });
-      if (newQuizzes.length > 0) {
-        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
-        setTargetQuizCount(newQuizzes.length); // Update target count on upload
-        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
-      }
-    };
-    reader.readAsText(file);
   };
 
   // -- Guest Interactions --
@@ -747,6 +836,36 @@ const App: React.FC = () => {
         data: { action, targets, shopItem }
       }
     });
+  };
+
+  // CSV Import (same as before)
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split('\n');
+      const newQuizzes: Quiz[] = [];
+      lines.forEach((line, idx) => {
+        const cols = line.split(',');
+        if (cols.length >= 6) {
+          newQuizzes.push({
+            id: `csv-${idx}`,
+            question: cols[0].trim(),
+            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
+            correctIndex: parseInt(cols[5].trim()) || 0
+          });
+        }
+      });
+      if (newQuizzes.length > 0) {
+        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
+        setTargetQuizCount(newQuizzes.length);
+        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
+      }
+    };
+    reader.readAsText(file);
   };
 
   // -- Render Helpers --
@@ -989,106 +1108,20 @@ const App: React.FC = () => {
         submitStrategy('DEFEND', [], pendingShopItem);
       };
 
-      // Shop State local to this render
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const [pendingShopItem, setPendingShopItem] = useState<'PIERCE' | 'BUY_LAND' | undefined>();
-
       return (
-        <div className="p-4 max-w-4xl mx-auto pb-24">
-          <div className="bg-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center sticky top-0 z-20 border-b-4 border-indigo-100">
-             <div>
-               <div className="text-xs text-gray-500 font-bold">보유 코인</div>
-               <div className="text-2xl font-bold text-yellow-500 flex items-center drop-shadow-sm">
-                 💰 {me.coins}
-               </div>
-             </div>
-             <div className="text-right">
-               <div className="text-xs text-gray-500 font-bold">퀴즈 결과</div>
-               <div className={`font-bold text-lg ${me.lastAnswerCorrect ? 'text-green-600' : 'text-red-500'}`}>
-                 {me.lastAnswerCorrect ? '정답! (+1 코인)' : '오답'}
-               </div>
-             </div>
-          </div>
-
-          {!actionLocked ? (
-            <div className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded text-center text-sm text-blue-800 font-bold mb-2">
-                 {me.lastAnswerCorrect ? "정답 보너스: 공격 2회 또는 방어 가능!" : "오답 페널티: 공격 1회만 가능 (방어 불가)"}
-              </div>
-
-              {/* Shop Section */}
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100">
-                 <h3 className="font-bold text-indigo-900 mb-3 flex items-center gap-2">🛒 아이템 상점</h3>
-                 <div className="flex gap-2">
-                    <Button 
-                      disabled={me.coins < COIN_COSTS.PIERCE_DEFENSE || pendingShopItem === 'PIERCE'}
-                      onClick={() => setPendingShopItem(pendingShopItem === 'PIERCE' ? undefined : 'PIERCE')}
-                      className={`text-sm flex-1 ${pendingShopItem === 'PIERCE' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
-                    >
-                      방어 관통 (3💰)
-                    </Button>
-                    <Button 
-                      disabled={me.coins < COIN_COSTS.BUY_LAND || pendingShopItem === 'BUY_LAND'}
-                      onClick={() => setPendingShopItem('BUY_LAND')}
-                      className={`text-sm flex-1 ${pendingShopItem === 'BUY_LAND' ? 'ring-4 ring-offset-1 ring-yellow-400 bg-indigo-700' : ''}`}
-                    >
-                      빈 땅 구매 (2💰)
-                    </Button>
-                 </div>
-                 {pendingShopItem === 'BUY_LAND' && (
-                    <div className="mt-3 bg-white p-3 rounded text-sm text-center">
-                       <p className="mb-2">빈 땅을 무작위로 하나 구매합니다.</p>
-                       <Button onClick={() => submitStrategy('DEFEND', [], 'BUY_LAND')} className="w-full bg-green-600 hover:bg-green-700">
-                          구매 확정
-                       </Button>
-                    </div>
-                 )}
-              </div>
-
-              {pendingShopItem !== 'BUY_LAND' && (
-                <>
-                  <div className="flex justify-center gap-4">
-                    <div className="text-center w-full">
-                      <p className="text-sm font-semibold mb-2 bg-indigo-100 inline-block px-3 py-1 rounded-full text-indigo-800">
-                        공격할 땅 선택 ({selectedLandIds.length}/{allowedAttacks})
-                      </p>
-                      <GameMap 
-                        lands={gameState.lands} 
-                        players={gameState.players} 
-                        myPlayerId={myPlayerId}
-                        selectable={true}
-                        onLandClick={toggleLandSelection}
-                        selectedLandIds={selectedLandIds}
-                      />
-                      <Button 
-                        onClick={handleConfirmAttack} 
-                        className="mt-6 w-full py-3 text-lg shadow-md"
-                        disabled={selectedLandIds.length === 0}
-                      >
-                        ⚔️ 공격 확정
-                      </Button>
-                    </div>
-                  </div>
-
-                  {canDefend && (
-                    <div className="text-center border-t-2 border-dashed border-gray-300 pt-6 mt-4">
-                      <p className="mb-3 text-gray-500 font-bold">- 또는 -</p>
-                      <Button onClick={handleDefend} variant="secondary" className="w-full border-2 border-indigo-200 py-3 text-lg font-bold text-indigo-700 hover:bg-indigo-50">
-                        🛡️ 방어하기 (공격 막기)
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="text-center py-20 bg-white rounded-xl shadow-lg border-2 border-indigo-50">
-              <div className="text-5xl mb-4">🔒</div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">전략 제출 완료!</h3>
-              <p className="text-gray-500">다른 친구들이 선택할 때까지 기다려주세요...</p>
-            </div>
-          )}
-        </div>
+          <GuestActionView 
+            me={me}
+            gameState={gameState}
+            myPlayerId={myPlayerId}
+            actionLocked={actionLocked}
+            selectedLandIds={selectedLandIds}
+            toggleLandSelection={toggleLandSelection}
+            handleConfirmAttack={handleConfirmAttack}
+            handleDefend={handleDefend}
+            canDefend={canDefend}
+            allowedAttacks={allowedAttacks}
+            onShopItemSelect={setPendingShopItem}
+          />
       );
     }
 
