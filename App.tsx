@@ -543,6 +543,9 @@ const App: React.FC = () => {
     lastRoundEvents: []
   });
 
+  // Local state for Host Map Fullscreen
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+
   // Keep a Ref of GameState to access latest state in PeerJS callbacks
   const gameStateRef = useRef(gameState);
   useEffect(() => {
@@ -1200,16 +1203,26 @@ const App: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white p-2 rounded-xl shadow-sm">
-             <div className="mb-2 text-sm font-semibold text-gray-500 px-2 flex justify-between">
+          <div className={`bg-white p-2 rounded-xl shadow-sm ${isMapFullscreen ? 'fixed inset-0 z-50 flex flex-col items-center justify-center p-8' : 'relative'}`}>
+             <div className="mb-2 text-sm font-semibold text-gray-500 px-2 flex justify-between w-full">
                 <span>실시간 천하 지도</span>
-                <span>총 영토: {gameState.totalLands}</span>
+                <div className="flex gap-4">
+                    <span>총 영토: {gameState.totalLands}</span>
+                    <button 
+                        onClick={() => setIsMapFullscreen(!isMapFullscreen)} 
+                        className="text-indigo-600 hover:text-indigo-800 underline font-bold"
+                    >
+                        {isMapFullscreen ? '전체화면 닫기' : '전체화면 보기'}
+                    </button>
+                </div>
              </div>
-             <GameMap 
-                lands={gameState.lands} 
-                players={gameState.players} 
-                combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []}
-             />
+             <div className={isMapFullscreen ? 'w-full h-full flex items-center justify-center overflow-auto' : ''}>
+                <GameMap 
+                    lands={gameState.lands} 
+                    players={gameState.players} 
+                    combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []}
+                />
+             </div>
           </div>
           
           <div className="bg-white p-4 rounded-xl shadow-sm h-64 overflow-y-auto">
@@ -1431,8 +1444,13 @@ const App: React.FC = () => {
        const myWins = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type !== 'BOUGHT');
        // Filter attacks where I participated (was in allAttackers) but LOST (winner != me)
        const myLosses = gameState.lastRoundEvents.filter(e => e.allAttackers && e.allAttackers.includes(me.name) && e.attackerName !== me.name);
+       // Filter attacks where I was blocked by defense
+       const myBlocked = gameState.lastRoundEvents.filter(e => e.type === 'DEFENDED' && e.allAttackers && e.allAttackers.includes(me.name));
 
        const myPurchases = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type === 'BOUGHT');
+       
+       // Filter attacks against me (Conquered, Pierced, or Defended)
+       // For DEFENDED events, I am the defenderName.
        const attackedMe = gameState.lastRoundEvents.filter(e => e.defenderName === me.name);
 
        return (
@@ -1468,7 +1486,7 @@ const App: React.FC = () => {
                <div className="bg-white p-3 rounded border border-yellow-100">
                  <p className="font-bold text-blue-600 mb-1">⚔️ 내가 공격한 곳:</p>
                  <div className="text-gray-700 space-y-1">
-                   {myWins.length === 0 && myLosses.length === 0 && <span>없음</span>}
+                   {myWins.length === 0 && myLosses.length === 0 && myBlocked.length === 0 && <span>없음</span>}
                    
                    {/* Successful Attacks */}
                    {myWins.map((e, idx) => {
@@ -1493,6 +1511,15 @@ const App: React.FC = () => {
                            <span className="text-xs bg-gray-200 text-gray-600 px-2 rounded-full font-bold">다른 나라의 국력에 밀림...</span>
                        </div>
                    ))}
+
+                   {/* Blocked Attacks */}
+                   {myBlocked.map((e, idx) => (
+                       <div key={`blocked-${idx}`} className="flex items-center gap-2">
+                           <span className="text-gray-500 font-bold">🛡️ 막힘:</span>
+                           <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
+                           <span className="text-xs bg-gray-100 text-gray-500 px-2 rounded-full font-bold">상대의 방어에 막혔습니다.</span>
+                       </div>
+                   ))}
                  </div>
                </div>
                <div className="bg-white p-3 rounded border border-yellow-100">
@@ -1507,7 +1534,9 @@ const App: React.FC = () => {
                  <p className="font-bold text-red-600 mb-1">🛡️ 나를 공격한 사람:</p>
                  <p className="text-gray-700">
                    {attackedMe.length > 0 
-                     ? [...new Set(attackedMe.map(e => e.attackerName))].map((name, idx, arr) => <span key={idx} className="inline-block mr-2 font-bold">{name}{idx < arr.length-1 ? ',' : ''}</span>) 
+                     ? [...new Set(
+                         attackedMe.flatMap(e => e.allAttackers || [e.attackerName || ''])
+                       )].filter(Boolean).map((name, idx, arr) => <span key={idx} className="inline-block mr-2 font-bold">{name}{idx < arr.length-1 ? ',' : ''}</span>) 
                      : '없음'}
                  </p>
                </div>
@@ -1548,7 +1577,7 @@ const App: React.FC = () => {
             allowedAttacks={me.lastAnswerCorrect ? 2 : 1}
             onShopItemSelect={onShopItemSelect}
             pendingShopItem={pendingShopItem}
-            prevQuiz={gameState.currentQuizIndex > 0 ? gameState.quizzes[gameState.currentQuizIndex - 1] : undefined}
+            prevQuiz={gameState.currentQuizIndex >= 0 ? gameState.quizzes[gameState.currentQuizIndex] : undefined}
         />
     );
   };

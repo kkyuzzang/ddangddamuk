@@ -120,6 +120,9 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
     
     // NOTE: We must find the owner based on the state BEFORE this round's modifications
     const currentOwner = nextState.players.find(p => p.id === land.ownerId);
+    
+    // Track blocked attackers for DEFENDED event
+    const blockedAttackers: string[] = [];
 
     // Filter out blocked attacks
     const validAttacks = attacks.filter(atk => {
@@ -135,13 +138,25 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
           combatEvents.push({ landId, type: 'PIERCED', defenderName: currentOwner.name, allAttackers: [] }); // Placeholder, strictly for visual
           return true;
         } else {
-          messages.push(`🛡️ ${landId + 1}번 땅: ${currentOwner.name}님이 방어 성공!`);
-          combatEvents.push({ landId, type: 'DEFENDED', defenderName: currentOwner.name, allAttackers: [] });
+          const attacker = nextState.players.find(p => p.id === atk.attackerId);
+          if (attacker) blockedAttackers.push(attacker.name);
+          
+          messages.push(`🛡️ ${landId + 1}번 땅: ${currentOwner.name}님이 ${attacker?.name || '적'}의 공격 방어!`);
           return false;
         }
       }
       return true;
     });
+
+    // Emitting DEFENDED event with the list of blocked attackers
+    if (blockedAttackers.length > 0 && currentOwner) {
+        combatEvents.push({ 
+            landId, 
+            type: 'DEFENDED', 
+            defenderName: currentOwner.name, 
+            allAttackers: blockedAttackers 
+        });
+    }
 
     if (validAttacks.length > 0) {
       // Pick random winner among valid attackers
@@ -175,8 +190,8 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
             allAttackers: allAttackerNames
         });
       }
-    } else if (attacks.length > 0 && !combatEvents.find(e => e.landId === landId && e.type === 'DEFENDED')) {
-       // Silent failure logic if needed (e.g. everyone defended against each other? unlikely in this ruleset)
+    } else if (attacks.length > 0 && blockedAttackers.length === 0) {
+       // Silent failure logic (e.g. invalid attack)
     }
   });
 
