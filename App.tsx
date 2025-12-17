@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Peer, DataConnection } from 'peerjs';
-import { GameState, Player, BroadcastMessage, GamePhase, Quiz, AVATARS, COLORS } from './types';
+import { GameState, Player, BroadcastMessage, GamePhase, Quiz, AVATARS, COLORS, CombatEvent } from './types';
 import { DEFAULT_QUIZZES, COIN_COSTS } from './constants';
 import { generateMap, assignInitialLands, resolveTurn } from './utils/gameLogic';
 import { GameMap } from './components/GameMap';
@@ -9,9 +10,9 @@ import { Button } from './components/Button';
 // -- Assets --
 // Using stable Wikimedia URLs. The referrerPolicy="no-referrer" in the img tag is crucial for these to work.
 const IMAGES = {
-  QUIZ: "https://upload.wikimedia.org/wikipedia/commons/7/71/Zhuge_Liang_%28Portrait%29.jpg", // Zhuge Liang (제갈량)
-  ACTION: "https://upload.wikimedia.org/wikipedia/commons/e/e5/Guan_Yu_Portrait.jpg", // Guan Yu (관우)
-  DIPLOMACY: "https://upload.wikimedia.org/wikipedia/commons/2/26/Liu_Bei_Portrait.jpg" // Liu Bei (유비)
+  QUIZ: "https://i.namu.wiki/i/_1ixWegWowx7Wu1rVufr7MLmOmXsxs1kAcBY5K7E9hTPCeyjqTMAE8CPUYl6jTMQZdd8K5YDY1QDMN1NPZulxntqpIIZrRkpC_UUOGiwkZPUrB5mTdoqcPZdyQK74cGyeqyEr6cfn8NGrxxug8wgPQ.webp", // Zhuge Liang (제갈량)
+  ACTION: "https://i.namu.wiki/i/T67odf_Xpmc5Tc4G2-se0dE0wCzrjskafmS2Coyl0gSSRODVUe_mNKoHsV7TUmxxfpJQ60h2I9jZgpJcOAAZOfOnk9Vi76yK4GlT45HpaPxnNPgtXeSJEJ0Dg7Wu4QFTv4-TWW8BFFCJiDK0BtHGkg.webp", // Guan Yu (전략)
+  DIPLOMACY: "https://i.namu.wiki/i/_W2ykDl-lHsuafd-nw4DWbO5LnVgdM0A5XiXEng4Fc9R-Ln74Wq6Fz7bdDS1awETtXK0vm6p6IFHiaqybuIv89WSU1pvNuTjlkHbClJP_ojMkPkoxyA6-P2TnK2aQAdqi0aRHTjy9LpCV1MOb9PNEQ.webp" // Liu Bei (외교)
 };
 
 // -- Sub-Components --
@@ -66,15 +67,25 @@ const PhaseVisual = ({ phase }: { phase: GamePhase }) => {
     );
 };
 
-const SubmissionStatusBoard = ({ players }: { players: Player[] }) => {
-    const submittedCount = players.filter(p => p.selectedAction).length;
+const SubmissionStatusBoard = ({ players, phase }: { players: Player[], phase: GamePhase }) => {
+    // For Quiz: check if lastAnswerCorrect is set (boolean)
+    // For Action: check if selectedAction is set
+    const checkSubmitted = (p: Player) => {
+        if (phase === 'QUIZ') return p.lastAnswerCorrect !== undefined;
+        if (phase === 'ACTION_SELECT') return !!p.selectedAction;
+        return false;
+    };
+
+    const submittedCount = players.filter(checkSubmitted).length;
     const totalPlayers = players.length;
     const isAllSubmitted = submittedCount === totalPlayers && totalPlayers > 0;
+
+    const title = phase === 'QUIZ' ? '📝 정답 제출 현황' : '🚩 전략 제출 현황';
 
     return (
         <div className="bg-white p-5 rounded-xl shadow-md border-2 border-red-100 mb-6 animate-fade-in">
             <h3 className="font-bold text-red-800 mb-4 flex justify-between items-center text-lg border-b border-red-100 pb-2">
-                <span className="flex items-center gap-2">🚩 전략 제출 현황</span>
+                <span className="flex items-center gap-2">{title}</span>
                 <span className={`px-3 py-1 rounded-full text-sm font-mono ${isAllSubmitted ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-red-100 text-red-700'}`}>
                     {submittedCount} / {totalPlayers} 완료
                 </span>
@@ -82,7 +93,7 @@ const SubmissionStatusBoard = ({ players }: { players: Player[] }) => {
             
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {players.map(p => {
-                    const isSubmitted = !!p.selectedAction;
+                    const isSubmitted = checkSubmitted(p);
                     return (
                         <div key={p.id} className={`
                             relative p-3 rounded-xl border flex flex-col items-center gap-2 transition-all duration-300
@@ -114,7 +125,7 @@ const SubmissionStatusBoard = ({ players }: { players: Player[] }) => {
             </div>
             {isAllSubmitted && (
                 <div className="mt-4 text-center text-green-600 font-bold bg-green-50 py-2 rounded-lg animate-bounce">
-                    ✨ 모든 군주가 전략을 제출했습니다! 결과를 확인하세요.
+                    ✨ 모든 군주가 {phase === 'QUIZ' ? '정답' : '전략'}을 제출했습니다!
                 </div>
             )}
         </div>
@@ -179,6 +190,71 @@ const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GameP
                                 </tr>
                             );
                         })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
+const Leaderboard = ({ players, myPlayerId }: { players: Player[], myPlayerId?: string }) => {
+    // Sort by Lands (desc), then Coins (desc), then Name
+    const sortedPlayers = [...players].sort((a, b) => {
+        if (b.lands.length !== a.lands.length) return b.lands.length - a.lands.length;
+        if (b.coins !== a.coins) return b.coins - a.coins;
+        return a.name.localeCompare(b.name);
+    });
+
+    const winner = sortedPlayers[0];
+    const myRank = myPlayerId ? sortedPlayers.findIndex(p => p.id === myPlayerId) + 1 : 0;
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+             {winner && (
+                <div className="text-center bg-yellow-100 border-4 border-yellow-300 p-6 rounded-2xl shadow-lg mb-8">
+                    <div className="text-5xl mb-2">👑</div>
+                    <h2 className="text-3xl font-extrabold text-yellow-800 mb-2">천하 통일 달성!</h2>
+                    <p className="text-2xl font-bold text-indigo-900">
+                        <span className="text-3xl mr-2">"{winner.name}"</span> 
+                        님이 천하를 평정하였습니다!
+                    </p>
+                </div>
+            )}
+            
+            {myRank > 0 && (
+                <div className="text-center mb-4">
+                    <span className="bg-indigo-600 text-white px-4 py-2 rounded-full text-xl font-bold shadow-md">
+                        나의 순위: {myRank}위
+                    </span>
+                </div>
+            )}
+
+            <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
+                <div className="bg-gray-800 text-white px-4 py-3 font-bold text-center">🏆 영웅 순위표</div>
+                <table className="w-full text-left">
+                    <thead className="bg-gray-50 border-b">
+                        <tr>
+                            <th className="px-4 py-3 w-16 text-center">순위</th>
+                            <th className="px-4 py-3">군주</th>
+                            <th className="px-4 py-3 text-center">영토</th>
+                            <th className="px-4 py-3 text-center">군자금</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                        {sortedPlayers.map((p, idx) => (
+                            <tr key={p.id} className={`${p.id === myPlayerId ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                <td className="px-4 py-3 text-center font-bold text-gray-600">
+                                    {idx + 1 === 1 ? '🥇' : idx + 1 === 2 ? '🥈' : idx + 1 === 3 ? '🥉' : idx + 1}
+                                </td>
+                                <td className="px-4 py-3 font-bold flex items-center gap-2">
+                                    <span className="text-xl">{p.avatar}</span>
+                                    {p.name}
+                                    {p.isEliminated && <span className="text-xs text-red-500 ml-2">(패배)</span>}
+                                </td>
+                                <td className="px-4 py-3 text-center font-mono text-indigo-600 font-bold">{p.lands.length}</td>
+                                <td className="px-4 py-3 text-center font-mono text-yellow-600 font-bold">{p.coins}</td>
+                            </tr>
+                        ))}
                     </tbody>
                 </table>
             </div>
@@ -336,8 +412,11 @@ const GuestActionView = ({
     canDefend,
     allowedAttacks,
     onShopItemSelect,
-    pendingShopItem
+    pendingShopItem,
+    prevQuiz
 }: any) => {
+
+    const prevAnswerText = prevQuiz ? `${prevQuiz.correctIndex + 1}. ${prevQuiz.options[prevQuiz.correctIndex]}` : '알 수 없음';
 
     return (
         <div className="p-4 max-w-4xl mx-auto pb-24">
@@ -360,8 +439,14 @@ const GuestActionView = ({
 
           {!actionLocked ? (
             <div className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded text-center text-sm text-blue-800 font-bold mb-2">
-                 {me.lastAnswerCorrect ? "승전보: 공격 2회 또는 방어 태세 가능!" : "패전: 공격 1회만 가능 (방어 불가)"}
+              <div className="bg-blue-50 p-4 rounded text-center text-sm text-blue-800 mb-2">
+                 <div className="font-bold text-lg mb-1">{me.lastAnswerCorrect ? "🎉 승전보!" : "😭 패전..."}</div>
+                 <div className="text-blue-900 bg-blue-100 py-1 px-3 rounded inline-block">
+                     직전 정답: <b>{prevAnswerText}</b>
+                 </div>
+                 <div className="mt-2 text-xs opacity-80">
+                    {me.lastAnswerCorrect ? "공격 2회 또는 방어 태세 가능" : "공격 1회만 가능 (방어 불가)"}
+                 </div>
               </div>
 
               {/* Shop Section */}
@@ -971,24 +1056,27 @@ const App: React.FC = () => {
 
       const lines = text.split('\n');
       const newQuizzes: Quiz[] = [];
-      lines.forEach((line, idx) => {
-        // Basic CSV parsing (not robust for commas in quotes, but sufficient for simple quiz format)
+      // Skip the first line (header) using slice(1)
+      lines.slice(1).forEach((line, idx) => {
         const cols = line.split(',');
         if (cols.length >= 6) {
           const qText = cols[0].trim();
           if (!qText) return; // Skip empty lines
+          // User inputs 1, 2, 3, 4. We need 0, 1, 2, 3. So subtract 1.
+          const ansIdx = (parseInt(cols[5].trim()) || 1) - 1;
+          
           newQuizzes.push({
             id: `csv-${idx}`,
             question: qText,
             options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
-            correctIndex: parseInt(cols[5].trim()) || 0
+            correctIndex: ansIdx
           });
         }
       });
       if (newQuizzes.length > 0) {
         setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
         setTargetQuizCount(newQuizzes.length);
-        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다! (한글 디코딩 완료)`);
+        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다! (한글 디코딩 완료, 1행 스킵됨)`);
       } else {
           alert('유효한 퀴즈를 찾지 못했습니다. CSV 형식을 확인해주세요.');
       }
@@ -997,7 +1085,7 @@ const App: React.FC = () => {
   };
 
   const downloadSampleCSV = () => {
-      const csvContent = "문제,보기1,보기2,보기3,보기4,정답번호(0-3)\n예시문제: 하늘은 무슨 색인가요?,빨강,파랑,노랑,검정,1";
+      const csvContent = "문제,보기1,보기2,보기3,보기4,정답번호(1-4)\n예시문제: 하늘은 무슨 색인가요?,빨강,파랑,노랑,검정,2";
       // Add BOM for Excel to recognize UTF-8 automatically
       const BOM = "\uFEFF";
       const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1081,8 +1169,13 @@ const App: React.FC = () => {
 
       <PhaseVisual phase={gameState.phase} />
 
-      {gameState.phase === 'ACTION_SELECT' && (
-         <SubmissionStatusBoard players={gameState.players} />
+      {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'QUIZ') && (
+         <SubmissionStatusBoard players={gameState.players} phase={gameState.phase} />
+      )}
+
+      {/* Game Over Leaderboard */}
+      {gameState.phase === 'GAME_OVER' && (
+          <Leaderboard players={gameState.players} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1177,7 +1270,7 @@ const App: React.FC = () => {
                      </button>
                    </div>
                    <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-sm bg-gray-50 p-2 rounded border" />
-                   <p className="text-xs text-gray-500">UTF-8 또는 EUC-KR(한글 엑셀) 형식을 지원합니다.</p>
+                   <p className="text-xs text-gray-500">UTF-8 또는 EUC-KR(한글 엑셀) 형식을 지원합니다. 첫 줄은 헤더로 간주하여 건너뜁니다.</p>
                 </div>
                 <hr className="border-gray-100" />
                 <LobbyView 
@@ -1219,13 +1312,32 @@ const App: React.FC = () => {
                <div className="text-center py-8">
                  <p className="mb-4 text-xl font-bold text-green-600">외교 타임 (결과 확인 및 협상)</p>
                  <p className="text-sm text-gray-500 mb-6">서로 대화하며 동맹을 맺거나 협상하는 시간입니다.</p>
-                 <Button onClick={nextRound} className="w-full py-4 text-lg shadow-lg animate-bounce">다음 라운드 시작 ▶</Button>
+                 <Button onClick={nextRound} className="w-full py-4 text-lg shadow-lg animate-bounce mb-6">다음 라운드 시작 ▶</Button>
+                 
+                 {/* Summary Section for Teacher */}
+                 <div className="bg-yellow-50 rounded-xl p-4 text-left border border-yellow-200 max-h-48 overflow-y-auto">
+                    <h4 className="font-bold text-yellow-800 mb-2 sticky top-0 bg-yellow-50 pb-2 border-b border-yellow-200">📊 이번 라운드 요약</h4>
+                    <ul className="space-y-1 text-sm text-gray-700">
+                        {gameState.lastRoundEvents.length === 0 && <li>- 특별한 전투 기록이 없습니다.</li>}
+                        {gameState.lastRoundEvents.map((evt, i) => {
+                            if (evt.type === 'BOUGHT') {
+                                return <li key={i} className="text-blue-700">💰 {evt.attackerName}님이 {evt.landId+1}번 빈 땅을 구매함</li>;
+                            } else if (evt.type === 'CONQUERED') {
+                                return <li key={i} className="text-red-700">⚔️ {evt.attackerName}님이 {evt.defenderName}의 {evt.landId+1}번 땅을 점령함</li>;
+                            } else if (evt.type === 'DEFENDED') {
+                                return <li key={i} className="text-green-700">🛡️ {evt.defenderName}님이 {evt.landId+1}번 땅 방어 성공</li>;
+                            } else if (evt.type === 'PIERCED') {
+                                return <li key={i} className="text-purple-700">🗡️ {evt.defenderName}님이 {evt.landId+1}번 땅에서 방어 관통 당함</li>;
+                            }
+                            return null;
+                        })}
+                    </ul>
+                 </div>
                </div>
             )}
             
             {gameState.phase === 'GAME_OVER' && (
               <div className="text-center py-8">
-                <h2 className="text-3xl font-bold text-indigo-600 mb-4">천하 통일 전쟁 종료!</h2>
                 <Button onClick={() => window.location.reload()} variant="secondary">로비로 돌아가기</Button>
               </div>
             )}
@@ -1345,6 +1457,9 @@ const App: React.FC = () => {
       const handleDefend = () => {
         submitStrategy('DEFEND', [], pendingShopItem);
       };
+      
+      // Get previous quiz for display
+      const prevQuiz = gameState.currentQuizIndex >= 0 ? gameState.quizzes[gameState.currentQuizIndex] : null;
 
       return (
           <GuestActionView 
@@ -1360,21 +1475,27 @@ const App: React.FC = () => {
             allowedAttacks={allowedAttacks}
             onShopItemSelect={setPendingShopItem}
             pendingShopItem={pendingShopItem}
+            prevQuiz={prevQuiz}
           />
       );
     }
 
     if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') {
-       const myAttacks = gameState.lastRoundEvents.filter(e => e.attackerName === me.name);
+       const myAttacks = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type !== 'BOUGHT');
+       const myPurchases = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type === 'BOUGHT');
        const attackedMe = gameState.lastRoundEvents.filter(e => e.defenderName === me.name);
 
        return (
          <div className="p-4 space-y-4 max-w-4xl mx-auto">
            <PhaseVisual phase={gameState.phase === 'GAME_OVER' ? 'ROUND_RESULT' : gameState.phase} />
-
-           <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
-             {gameState.phase === 'ROUND_RESULT' ? '🤝 외교 타임' : '게임 종료'}
-           </h2>
+            
+           {gameState.phase === 'GAME_OVER' ? (
+                <Leaderboard players={gameState.players} myPlayerId={myPlayerId} />
+           ) : (
+             <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
+               🤝 외교 타임
+             </h2>
+           )}
            
            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 shadow-sm">
              <h3 className="font-bold text-yellow-800 mb-3 text-lg border-b border-yellow-200 pb-2">📊 이번 라운드 전투 요약</h3>
@@ -1383,7 +1504,15 @@ const App: React.FC = () => {
                  <p className="font-bold text-blue-600 mb-1">⚔️ 내가 공격한 곳:</p>
                  <p className="text-gray-700">
                    {myAttacks.length > 0 
-                     ? myAttacks.map((e, idx) => <span key={idx} className="inline-block mr-2">Goal: {e.defenderName || '빈 땅'}(#{e.landId+1}){idx < myAttacks.length-1 ? ',' : ''}</span>) 
+                     ? myAttacks.map((e, idx) => <span key={idx} className="inline-block mr-2">Target: {e.defenderName || '빈 땅'}(#{e.landId+1}){idx < myAttacks.length-1 ? ',' : ''}</span>) 
+                     : '없음'}
+                 </p>
+               </div>
+               <div className="bg-white p-3 rounded border border-yellow-100">
+                 <p className="font-bold text-purple-600 mb-1">💰 내가 구매한 곳:</p>
+                 <p className="text-gray-700">
+                   {myPurchases.length > 0 
+                     ? myPurchases.map((e, idx) => <span key={idx} className="inline-block mr-2">No.{e.landId+1}{idx < myPurchases.length-1 ? ',' : ''}</span>) 
                      : '없음'}
                  </p>
                </div>
@@ -1407,10 +1536,13 @@ const App: React.FC = () => {
            <div className="bg-white p-4 rounded-xl shadow border border-gray-100 max-h-40 overflow-y-auto">
              {gameState.logs.slice(-5).map((l, i) => <p key={i} className="text-sm border-b py-2 text-gray-700">{l}</p>)}
            </div>
-           <div className="text-center mt-6">
-             <span className="inline-block animate-bounce text-indigo-500">⏳</span>
-             <p className="text-indigo-600 font-bold inline-block ml-2">선생님이 다음 라운드를 준비 중입니다...</p>
-           </div>
+           
+           {gameState.phase !== 'GAME_OVER' && (
+               <div className="text-center mt-6">
+                 <span className="inline-block animate-bounce text-indigo-500">⏳</span>
+                 <p className="text-indigo-600 font-bold inline-block ml-2">선생님이 다음 라운드를 준비 중입니다...</p>
+               </div>
+           )}
          </div>
        );
     }

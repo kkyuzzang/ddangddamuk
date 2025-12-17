@@ -1,3 +1,4 @@
+
 import { GameState, Player, Land, CombatEvent } from '../types';
 import { COIN_COSTS } from '../constants';
 
@@ -50,7 +51,6 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
     // Rule Enforcement
     if (p.lastAnswerCorrect) {
         // Correct: Can Defend OR Attack up to 2.
-        // Logic handled in UI, but strictly: if defending, set flag.
         if (p.selectedAction === 'DEFEND') {
              p.isDefending = true;
              messages.push(`🛡️ ${p.name}: 정답 보너스로 방어 태세!`);
@@ -77,7 +77,8 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
            target.ownerId = p.id;
            p.coins -= COIN_COSTS.BUY_LAND;
            messages.push(`💰 ${p.name}: 빈 땅(No.${target.id + 1}) 구매 성공!`);
-           combatEvents.push({ landId: target.id, type: 'CONQUERED', attackerName: p.name });
+           // Use BOUGHT type to distinguish from attacks
+           combatEvents.push({ landId: target.id, type: 'BOUGHT', attackerName: p.name, defenderName: '빈 땅' });
         } else {
            messages.push(`💸 ${p.name}: 빈 땅이 없어 구매 취소 (코인 반환).`);
            // Refund implies simply not deducting
@@ -110,6 +111,10 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
     const landId = parseInt(landIdStr);
     const attacks = attacksOnLand[landId];
     const land = nextState.lands[landId];
+    
+    // NOTE: We must find the owner based on the state BEFORE this round's modifications (which is partially nextState here)
+    // Since we processed BUY_LAND above, some empty lands might have owners now. 
+    // However, attacks on newly bought lands are valid.
     const currentOwner = nextState.players.find(p => p.id === land.ownerId);
 
     // Filter out blocked attacks
@@ -142,13 +147,18 @@ export const resolveTurn = (currentState: GameState): { nextState: GameState, me
       
       if (winner) {
         // Change ownership
-        const oldOwnerName = currentOwner ? currentOwner.name : "주인 없음";
+        const oldOwnerName = currentOwner ? currentOwner.name : "빈 땅";
         land.ownerId = winnerId;
         messages.push(`🚩 ${winner.name}님이 ${oldOwnerName}의 땅(${landId + 1})을 점령!`);
-        combatEvents.push({ landId, type: 'CONQUERED', attackerName: winner.name, defenderName: currentOwner?.name });
+        combatEvents.push({ 
+            landId, 
+            type: 'CONQUERED', 
+            attackerName: winner.name, 
+            defenderName: oldOwnerName 
+        });
       }
     } else if (attacks.length > 0 && !combatEvents.find(e => e.landId === landId && e.type === 'DEFENDED')) {
-       // Silent failure (e.g. owner attacked own land without logic handling, or defense blocked all silently)
+       // Silent failure logic if needed
     }
   });
 

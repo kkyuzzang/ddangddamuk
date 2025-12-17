@@ -1,3 +1,4 @@
+
 export type GamePhase = 'LOBBY' | 'QUIZ' | 'ACTION_SELECT' | 'ACTION_EXECUTE' | 'ROUND_RESULT' | 'GAME_OVER';
 
 export interface Quiz {
@@ -33,7 +34,7 @@ export interface Land {
 
 export interface CombatEvent {
   landId: number;
-  type: 'CONQUERED' | 'DEFENDED' | 'FAILED_ATTACK' | 'PIERCED';
+  type: 'CONQUERED' | 'DEFENDED' | 'FAILED_ATTACK' | 'PIERCED' | 'BOUGHT';
   attackerName?: string;
   defenderName?: string;
 }
