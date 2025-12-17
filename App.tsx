@@ -7,10 +7,11 @@ import { GameMap } from './components/GameMap';
 import { Button } from './components/Button';
 
 // -- Assets --
+// Using stable Wikimedia URLs. The referrerPolicy="no-referrer" in the img tag is crucial for these to work.
 const IMAGES = {
-  QUIZ: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Zhuge_Liang_Portrait.jpg/440px-Zhuge_Liang_Portrait.jpg", // Zhuge Liang
-  ACTION: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Guan_Yu_Portrait.jpg/400px-Guan_Yu_Portrait.jpg", // Guan Yu
-  DIPLOMACY: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Liu_Bei_Portrait.jpg/400px-Liu_Bei_Portrait.jpg" // Liu Bei
+  QUIZ: "https://upload.wikimedia.org/wikipedia/commons/7/71/Zhuge_Liang_%28Portrait%29.jpg", // Zhuge Liang (제갈량)
+  ACTION: "https://upload.wikimedia.org/wikipedia/commons/e/e5/Guan_Yu_Portrait.jpg", // Guan Yu (관우 - 실제 초상화는 아니나 삼국지 연의 묘사와 유사한 이미지 사용)
+  DIPLOMACY: "https://upload.wikimedia.org/wikipedia/commons/2/26/Liu_Bei_Portrait.jpg" // Liu Bei (유비)
 };
 
 // -- Sub-Components --
@@ -46,7 +47,12 @@ const PhaseVisual = ({ phase }: { phase: GamePhase }) => {
 
     return (
         <div className={`flex items-center gap-4 p-4 rounded-xl border-l-4 shadow-sm mb-4 ${color} transition-all duration-500`}>
-            <img src={imgUrl} alt={title} className="w-20 h-20 object-cover rounded-full border-2 border-white shadow-md" />
+            <img 
+              src={imgUrl} 
+              alt={title} 
+              className="w-20 h-20 object-cover rounded-full border-2 border-white shadow-md bg-gray-200"
+              referrerPolicy="no-referrer" 
+            />
             <div>
                 <h3 className="font-bold text-lg text-gray-800">{title}</h3>
                 <p className="text-sm text-gray-600">{desc}</p>
@@ -453,28 +459,34 @@ const App: React.FC = () => {
 
     heartbeatIntervalRef.current = setInterval(() => {
         if (isHost) {
-            // Host: Send PING to all, Remove dead players
+            // Host: Send PING to all, REMOVE DEAD CONNECTIONS BUT KEEP PLAYERS IN STATE
+            // This allows reconnection with persistence
             const now = Date.now();
             
-            // 1. Prune disconnected players (timeout increased to 15s to prevent accidental drops)
-            setGameState(prev => {
-                const activePlayers = prev.players.filter(p => {
+            // 1. Identify disconnected players
+            prev => {
+                const disconnectedIds: string[] = [];
+                prev.players.forEach(p => {
                     const lastPing = lastPingMap.current[p.id];
-                    if (!lastPing) return true; // New player grace
+                    if (!lastPing) return; 
                     if (now - lastPing > 15000) {
-                        console.log(`Removing inactive player: ${p.name} (${p.id})`);
-                        const conn = connectionsRef.current.find(c => c.metadata?.playerId === p.id);
-                        if (conn) conn.close();
-                        return false;
+                        disconnectedIds.push(p.id);
                     }
-                    return true;
                 });
-                
-                if (activePlayers.length !== prev.players.length) {
-                    return { ...prev, players: activePlayers };
+
+                if (disconnectedIds.length > 0) {
+                     // We just close connections, we do NOT remove from state.
+                     disconnectedIds.forEach(id => {
+                        const conn = connectionsRef.current.find(c => c.metadata?.playerId === id);
+                        if (conn && conn.open) {
+                             console.log(`Closing connection for inactive player: ${id}`);
+                             conn.close();
+                        }
+                     });
+                     // DO NOT filter players out from state to allow reconnection persistence
                 }
                 return prev;
-            });
+            };
 
             // 2. Send PING
             connectionsRef.current.forEach(conn => {
@@ -661,15 +673,35 @@ const App: React.FC = () => {
       const existingPlayerIndex = prev.players.findIndex(p => p.name === newPlayer.name);
       
       if (existingPlayerIndex !== -1) {
+        // RECONNECTION LOGIC:
+        // Update the player ID to the new one, BUT keep the lands and coins.
+        // Also need to update LANDS ownership to the new ID.
+        const oldId = prev.players[existingPlayerIndex].id;
+        const newId = newPlayer.id;
+
         const updatedPlayers = [...prev.players];
         updatedPlayers[existingPlayerIndex] = {
           ...updatedPlayers[existingPlayerIndex],
-          id: newPlayer.id,
+          id: newId, // Update ID
+          // Keep other stats (coins, etc.)
         };
+
+        // Update Lands ownership
+        const updatedLands = prev.lands.map(land => {
+           if (land.ownerId === oldId) {
+             return { ...land, ownerId: newId };
+           }
+           return land;
+        });
+
+        // Also update the player's internal land reference if it existed (though usually redundant as lands is derived from map in some logic, but kept in player for easy access)
+        updatedPlayers[existingPlayerIndex].lands = updatedLands.filter(l => l.ownerId === newId).map(l => l.id);
+
         return {
           ...prev,
           players: updatedPlayers,
-          logs: [...prev.logs, `${newPlayer.name}님이 재접속했습니다.`]
+          lands: updatedLands,
+          logs: [...prev.logs, `${newPlayer.name}님이 재접속했습니다. (영토 복구됨)`]
         };
       }
 
@@ -854,17 +886,38 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Use FileReader as ArrayBuffer to handle encoding manually
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const text = evt.target?.result as string;
+      const buffer = evt.target?.result as ArrayBuffer;
+      let text = '';
+      
+      // Try to decode as UTF-8 first
+      try {
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        text = decoder.decode(buffer);
+      } catch (e) {
+        // If UTF-8 fails, try EUC-KR (common for Korean Excel CSVs)
+        try {
+            const decoder = new TextDecoder('euc-kr');
+            text = decoder.decode(buffer);
+        } catch (e2) {
+            alert('파일 인코딩을 읽을 수 없습니다. UTF-8 또는 EUC-KR 형식이어야 합니다.');
+            return;
+        }
+      }
+
       const lines = text.split('\n');
       const newQuizzes: Quiz[] = [];
       lines.forEach((line, idx) => {
+        // Basic CSV parsing (not robust for commas in quotes, but sufficient for simple quiz format)
         const cols = line.split(',');
         if (cols.length >= 6) {
+          const qText = cols[0].trim();
+          if (!qText) return; // Skip empty lines
           newQuizzes.push({
             id: `csv-${idx}`,
-            question: cols[0].trim(),
+            question: qText,
             options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
             correctIndex: parseInt(cols[5].trim()) || 0
           });
@@ -873,15 +926,19 @@ const App: React.FC = () => {
       if (newQuizzes.length > 0) {
         setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
         setTargetQuizCount(newQuizzes.length);
-        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
+        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다! (한글 디코딩 완료)`);
+      } else {
+          alert('유효한 퀴즈를 찾지 못했습니다. CSV 형식을 확인해주세요.');
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const downloadSampleCSV = () => {
       const csvContent = "문제,보기1,보기2,보기3,보기4,정답번호(0-3)\n예시문제: 하늘은 무슨 색인가요?,빨강,파랑,노랑,검정,1";
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      // Add BOM for Excel to recognize UTF-8 automatically
+      const BOM = "\uFEFF";
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
@@ -1054,6 +1111,7 @@ const App: React.FC = () => {
                      </button>
                    </div>
                    <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-sm bg-gray-50 p-2 rounded border" />
+                   <p className="text-xs text-gray-500">UTF-8 또는 EUC-KR(한글 엑셀) 형식을 지원합니다.</p>
                 </div>
                 <hr className="border-gray-100" />
                 <LobbyView 
