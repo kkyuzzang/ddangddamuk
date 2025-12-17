@@ -38,7 +38,7 @@ const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GameP
                             return (
                                 <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-4 py-3 flex items-center gap-2">
-                                        <div className={`w-8 h-8 rounded-full ${p.color} flex items-center justify-center shadow-sm`}>
+                                        <div className={`w-8 h-8 rounded-full ${p.color} flex items-center justify-center shadow-sm text-xs text-white font-bold`}>
                                             {p.avatar}
                                         </div>
                                         <span className={`font-bold ${p.isEliminated ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
@@ -100,7 +100,7 @@ const LobbyView = ({
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
       {players.map(p => (
         <div key={p.id} className="bg-white p-4 rounded-xl shadow-md flex items-center space-x-3 animate-fade-in border-b-4 border-indigo-100">
-          <div className={`w-10 h-10 rounded-full ${p.color} flex items-center justify-center text-xl shadow-sm`}>
+          <div className={`w-10 h-10 rounded-full ${p.color} flex items-center justify-center text-xl shadow-sm text-white font-bold`}>
             {p.avatar}
           </div>
           <span className="font-bold text-gray-700">{p.name}</span>
@@ -360,6 +360,12 @@ const App: React.FC = () => {
     lastRoundEvents: []
   });
 
+  // Keep a Ref of GameState to access latest state in PeerJS callbacks
+  const gameStateRef = useRef(gameState);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
   // Local Player State
   const [myPlayerId, setMyPlayerId] = useState<string>('');
   const [joinName, setJoinName] = useState('');
@@ -385,6 +391,7 @@ const App: React.FC = () => {
   // Timer Refs
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerCallbackRef = useRef<(() => void) | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -490,7 +497,7 @@ const App: React.FC = () => {
         conn.on('open', () => {
           console.log('Connection established, sending state to:', conn.peer);
           setTimeout(() => {
-             conn.send({ type: 'STATE_UPDATE', payload: gameState });
+             conn.send({ type: 'STATE_UPDATE', payload: gameStateRef.current });
           }, 100);
         });
       });
@@ -543,8 +550,14 @@ const App: React.FC = () => {
       conn.on('data', (data: any) => {
         if (data && data.type === 'STATE_UPDATE') {
           setGameState(data.payload);
+          
+          // CRITICAL FIX: Use gameStateRef to check CURRENT phase before reset
+          // If we use 'gameState' from closure, it might be initial state 'LOBBY'
+          const currentPhase = gameStateRef.current.phase;
+          const newPhase = data.payload.phase;
+
           // Unlock local state when new action phase starts
-          if (data.payload.phase === 'ACTION_SELECT' && gameState.phase !== 'ACTION_SELECT') {
+          if (newPhase === 'ACTION_SELECT' && currentPhase !== 'ACTION_SELECT') {
             setActionLocked(false);
             setSelectedLandIds([]);
             setPendingShopItem(undefined);
@@ -611,7 +624,8 @@ const App: React.FC = () => {
 
   const handlePlayerJoin = (newPlayer: Player, conn?: DataConnection) => {
     if (conn) {
-        conn.metadata = { playerId: newPlayer.id };
+        // Fix: Explicitly cast to any to allow assignment to readonly metadata
+        (conn as any).metadata = { playerId: newPlayer.id };
     }
     lastPingMap.current[newPlayer.id] = Date.now();
 
@@ -720,6 +734,7 @@ const App: React.FC = () => {
 
   const startTimer = (seconds: number, onComplete: () => void) => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    timerCallbackRef.current = onComplete; // Store callback for extension
     
     let timeLeft = seconds;
     timerIntervalRef.current = setInterval(() => {
@@ -731,6 +746,20 @@ const App: React.FC = () => {
         onComplete();
       }
     }, 1000);
+  };
+
+  const addTime = (seconds: number) => {
+      // Calculate new time based on current state ref to be safe
+      const currentTimer = gameStateRef.current.timer;
+      const newTime = currentTimer + seconds;
+      
+      // Update state immediately
+      setGameState(prev => ({ ...prev, timer: newTime }));
+      
+      // Restart timer with new duration if we have a callback
+      if (timerCallbackRef.current) {
+         startTimer(newTime, timerCallbackRef.current);
+      }
   };
 
   const endQuizPhase = (currentStateOverride?: GameState) => {
@@ -756,9 +785,11 @@ const App: React.FC = () => {
         ...nextState,
         phase: 'ROUND_RESULT',
         logs: [...messages, ...prev.logs],
-        timer: 10
+        timer: 0 // No timer for result phase, manual advance
       };
     });
+    // Stop timer for manual progression
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
   };
 
   const nextRound = () => {
@@ -787,6 +818,48 @@ const App: React.FC = () => {
       };
     });
     startTimer(gameState.quizDuration, () => endQuizPhase());
+  };
+
+  // CSV Import
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split('\n');
+      const newQuizzes: Quiz[] = [];
+      lines.forEach((line, idx) => {
+        const cols = line.split(',');
+        if (cols.length >= 6) {
+          newQuizzes.push({
+            id: `csv-${idx}`,
+            question: cols[0].trim(),
+            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
+            correctIndex: parseInt(cols[5].trim()) || 0
+          });
+        }
+      });
+      if (newQuizzes.length > 0) {
+        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
+        setTargetQuizCount(newQuizzes.length);
+        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadSampleCSV = () => {
+      const csvContent = "문제,보기1,보기2,보기3,보기4,정답번호(0-3)\n예시문제: 하늘은 무슨 색인가요?,빨강,파랑,노랑,검정,1";
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "quiz_sample.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
   // -- Guest Interactions --
@@ -836,36 +909,6 @@ const App: React.FC = () => {
         data: { action, targets, shopItem }
       }
     });
-  };
-
-  // CSV Import (same as before)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const lines = text.split('\n');
-      const newQuizzes: Quiz[] = [];
-      lines.forEach((line, idx) => {
-        const cols = line.split(',');
-        if (cols.length >= 6) {
-          newQuizzes.push({
-            id: `csv-${idx}`,
-            question: cols[0].trim(),
-            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
-            correctIndex: parseInt(cols[5].trim()) || 0
-          });
-        }
-      });
-      if (newQuizzes.length > 0) {
-        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
-        setTargetQuizCount(newQuizzes.length);
-        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
-      }
-    };
-    reader.readAsText(file);
   };
 
   // -- Render Helpers --
@@ -971,7 +1014,12 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="space-y-2">
-                   <label className="text-sm font-semibold">퀴즈 업로드 (CSV)</label>
+                   <div className="flex justify-between items-center">
+                     <label className="text-sm font-semibold">퀴즈 업로드 (CSV)</label>
+                     <button onClick={downloadSampleCSV} className="text-xs text-blue-600 underline hover:text-blue-800">
+                         양식 다운로드
+                     </button>
+                   </div>
                    <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-sm bg-gray-50 p-2 rounded border" />
                 </div>
                 <hr className="border-gray-100" />
@@ -992,7 +1040,10 @@ const App: React.FC = () => {
                <div className="text-center py-8">
                  <div className="text-6xl font-black text-indigo-600 mb-4 animate-pulse">{gameState.timer}</div>
                  <p className="text-lg font-medium text-gray-600">학생들이 문제를 풀고 있습니다...</p>
-                 <Button className="mt-8 bg-gray-400 hover:bg-gray-500" onClick={() => endQuizPhase()}>퀴즈 강제 종료</Button>
+                 <div className="mt-8 flex gap-2 justify-center">
+                    <Button onClick={() => addTime(5)} className="bg-blue-500 hover:bg-blue-600 text-sm">⏱️ +5초</Button>
+                    <Button className="bg-gray-400 hover:bg-gray-500 text-sm" onClick={() => endQuizPhase()}>퀴즈 강제 종료</Button>
+                 </div>
                </div>
             )}
 
@@ -1000,14 +1051,18 @@ const App: React.FC = () => {
                <div className="text-center py-8">
                  <div className="text-6xl font-black text-indigo-600 mb-4 animate-pulse">{gameState.timer}</div>
                  <p className="text-lg font-medium text-gray-600">전략을 선택하고 있습니다...</p>
-                 <Button className="mt-8 bg-gray-400 hover:bg-gray-500" onClick={() => resolveRound()}>결과 바로 보기</Button>
+                 <div className="mt-8 flex gap-2 justify-center">
+                    <Button onClick={() => addTime(5)} className="bg-blue-500 hover:bg-blue-600 text-sm">⏱️ +5초</Button>
+                    <Button className="bg-gray-400 hover:bg-gray-500 text-sm" onClick={() => resolveRound()}>결과 바로 보기</Button>
+                 </div>
                </div>
             )}
 
             {gameState.phase === 'ROUND_RESULT' && (
                <div className="text-center py-8">
-                 <p className="mb-4 text-xl font-bold text-green-600">라운드 결과 집계 완료!</p>
-                 <Button onClick={nextRound} className="w-full py-4 text-lg">다음 라운드 시작</Button>
+                 <p className="mb-4 text-xl font-bold text-green-600">외교 타임 (결과 확인 및 협상)</p>
+                 <p className="text-sm text-gray-500 mb-6">학생들이 서로 대화하며 동맹을 맺거나 협상하는 시간입니다.</p>
+                 <Button onClick={nextRound} className="w-full py-4 text-lg shadow-lg animate-bounce">다음 라운드 시작 ▶</Button>
                </div>
             )}
             
@@ -1024,6 +1079,9 @@ const App: React.FC = () => {
   );
 
   const renderGuestDashboard = () => {
+    // ... (Guest implementation same as previous, logic handled inside GuestActionView and useEffects above)
+    // Only difference is props passed are static, logic update handled in initializeGuest
+
     const me = gameState.players.find(p => p.id === myPlayerId);
     
     // Connection Loading State
@@ -1128,7 +1186,9 @@ const App: React.FC = () => {
     if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') {
        return (
          <div className="p-4 space-y-4 max-w-4xl mx-auto">
-           <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">라운드 결과</h2>
+           <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
+             {gameState.phase === 'ROUND_RESULT' ? '🤝 외교 타임' : '게임 종료'}
+           </h2>
            <GameMap 
              lands={gameState.lands} 
              players={gameState.players} 
@@ -1154,7 +1214,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 flex flex-col items-center justify-center p-4">
         <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-2 drop-shadow-sm">
-          퀴즈 땅따먹기
+          삼국지 땅따먹기
         </h1>
         <p className="text-gray-500 mb-12 text-lg font-medium">지식을 겨루고 영토를 확장하세요!</p>
         
@@ -1199,7 +1259,7 @@ const App: React.FC = () => {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
         <div className="font-bold text-indigo-700 flex items-center gap-2 text-lg">
-          <span>🏰</span> 퀴즈 땅따먹기
+          <span>🏰</span> 삼국지 땅따먹기
         </div>
         <div className="flex gap-2 items-center">
            <span className="text-xs text-gray-400 font-mono border px-2 py-1 rounded bg-gray-50">ROOM: {gameState.roomCode}</span>

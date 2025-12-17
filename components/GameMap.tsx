@@ -29,10 +29,12 @@ export const GameMap: React.FC<GameMapProps> = ({
         
         let bgColor = 'bg-white';
         let borderColor = 'border-gray-300';
+        let textColor = 'text-gray-400';
         
         if (owner) {
            bgColor = owner.color;
            borderColor = 'border-white';
+           textColor = 'text-white';
         }
 
         // Animation logic based on combat events
@@ -59,25 +61,27 @@ export const GameMap: React.FC<GameMapProps> = ({
             onClick={() => onLandClick && onLandClick(land.id)}
             disabled={!selectable}
             className={`
-              relative aspect-square rounded-lg border-2 flex flex-col items-center justify-center transition-all duration-300
+              relative aspect-square rounded-lg border-2 flex flex-col items-center justify-center transition-all duration-300 overflow-hidden
               ${bgColor} 
               ${borderColor}
               ${isSelected ? 'ring-4 ring-yellow-400 z-10 scale-105' : 'hover:opacity-90'}
-              ${!owner ? 'opacity-50' : ''}
+              ${!owner ? 'opacity-80' : ''}
               ${selectable ? 'cursor-pointer' : 'cursor-default'}
               ${animationClass}
             `}
           >
-            <span className="text-xs font-bold text-white/80 absolute top-1 left-1">#{land.id + 1}</span>
+            <span className={`text-[10px] font-bold absolute top-0 left-1 ${owner ? 'text-white/70' : 'text-gray-400'}`}>#{land.id + 1}</span>
             
-            {owner && (
-              <span className={`text-2xl shadow-sm filter drop-shadow-md transition-transform duration-500 ${event?.type === 'CONQUERED' ? 'scale-125' : ''}`}>
-                {owner.avatar}
+            {owner ? (
+              <span className={`text-xs sm:text-sm font-bold text-white px-1 text-center break-words leading-tight w-full shadow-black drop-shadow-md transition-transform duration-500 ${event?.type === 'CONQUERED' ? 'scale-125' : ''}`}>
+                {owner.name}
               </span>
+            ) : (
+                <span className="text-gray-300 text-xs">-</span>
             )}
 
             {isMine && !event && (
-              <div className="absolute bottom-1 right-1 w-3 h-3 bg-white rounded-full animate-pulse" />
+              <div className="absolute bottom-1 right-1 w-2 h-2 bg-white rounded-full animate-pulse shadow-sm" />
             )}
             
             {land.isLocked && !event && (
