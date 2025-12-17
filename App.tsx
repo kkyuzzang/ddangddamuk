@@ -10,7 +10,7 @@ import { Button } from './components/Button';
 // Using stable Wikimedia URLs. The referrerPolicy="no-referrer" in the img tag is crucial for these to work.
 const IMAGES = {
   QUIZ: "https://upload.wikimedia.org/wikipedia/commons/7/71/Zhuge_Liang_%28Portrait%29.jpg", // Zhuge Liang (제갈량)
-  ACTION: "https://upload.wikimedia.org/wikipedia/commons/e/e5/Guan_Yu_Portrait.jpg", // Guan Yu (관우 - 실제 초상화는 아니나 삼국지 연의 묘사와 유사한 이미지 사용)
+  ACTION: "https://upload.wikimedia.org/wikipedia/commons/e/e5/Guan_Yu_Portrait.jpg", // Guan Yu (관우)
   DIPLOMACY: "https://upload.wikimedia.org/wikipedia/commons/2/26/Liu_Bei_Portrait.jpg" // Liu Bei (유비)
 };
 
@@ -36,27 +36,87 @@ const PhaseVisual = ({ phase }: { phase: GamePhase }) => {
             color = "border-red-500 bg-red-50";
             break;
         case 'ROUND_RESULT':
+        case 'GAME_OVER': // Show Diplomacy/End image for game over too
             imgUrl = IMAGES.DIPLOMACY;
-            title = "천하 정세 (외교)";
-            desc = "유비의 덕으로 동맹을 맺고 적을 파악하라!";
+            title = phase === 'GAME_OVER' ? "천하 통일 (종료)" : "천하 정세 (외교)";
+            desc = phase === 'GAME_OVER' ? "긴 전쟁이 끝났습니다." : "유비의 덕으로 동맹을 맺고 적을 파악하라!";
             color = "border-green-500 bg-green-50";
             break;
         default:
             return null;
     }
 
+    if (!imgUrl) return null;
+
     return (
-        <div className={`flex items-center gap-4 p-4 rounded-xl border-l-4 shadow-sm mb-4 ${color} transition-all duration-500`}>
-            <img 
-              src={imgUrl} 
-              alt={title} 
-              className="w-20 h-20 object-cover rounded-full border-2 border-white shadow-md bg-gray-200"
-              referrerPolicy="no-referrer" 
-            />
+        <div className={`flex items-center gap-4 p-4 rounded-xl border-l-4 shadow-sm mb-4 ${color} transition-all duration-500 bg-white`}>
+            <div className="flex-shrink-0">
+                <img 
+                src={imgUrl} 
+                alt={title} 
+                className="w-20 h-20 object-cover rounded-full border-4 border-white shadow-md bg-gray-200"
+                referrerPolicy="no-referrer" 
+                />
+            </div>
             <div>
                 <h3 className="font-bold text-lg text-gray-800">{title}</h3>
                 <p className="text-sm text-gray-600">{desc}</p>
             </div>
+        </div>
+    );
+};
+
+const SubmissionStatusBoard = ({ players }: { players: Player[] }) => {
+    const submittedCount = players.filter(p => p.selectedAction).length;
+    const totalPlayers = players.length;
+    const isAllSubmitted = submittedCount === totalPlayers && totalPlayers > 0;
+
+    return (
+        <div className="bg-white p-5 rounded-xl shadow-md border-2 border-red-100 mb-6 animate-fade-in">
+            <h3 className="font-bold text-red-800 mb-4 flex justify-between items-center text-lg border-b border-red-100 pb-2">
+                <span className="flex items-center gap-2">🚩 전략 제출 현황</span>
+                <span className={`px-3 py-1 rounded-full text-sm font-mono ${isAllSubmitted ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-red-100 text-red-700'}`}>
+                    {submittedCount} / {totalPlayers} 완료
+                </span>
+            </h3>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {players.map(p => {
+                    const isSubmitted = !!p.selectedAction;
+                    return (
+                        <div key={p.id} className={`
+                            relative p-3 rounded-xl border flex flex-col items-center gap-2 transition-all duration-300
+                            ${isSubmitted 
+                                ? 'bg-green-50 border-green-300 shadow-sm scale-105' 
+                                : 'bg-gray-50 border-gray-200 opacity-80'}
+                        `}>
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg text-white font-bold shadow-sm ${p.color}`}>
+                                {p.avatar}
+                            </div>
+                            <span className={`text-sm font-bold truncate w-full text-center ${isSubmitted ? 'text-green-800' : 'text-gray-500'}`}>
+                                {p.name}
+                            </span>
+                            {isSubmitted && (
+                                <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1 shadow-md">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
+                                </div>
+                            )}
+                             {!isSubmitted && (
+                                <div className="absolute -top-2 -right-2 bg-gray-300 text-white rounded-full p-1">
+                                    <span className="text-[10px] font-bold px-1">...</span>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+            {isAllSubmitted && (
+                <div className="mt-4 text-center text-green-600 font-bold bg-green-50 py-2 rounded-lg animate-bounce">
+                    ✨ 모든 군주가 전략을 제출했습니다! 결과를 확인하세요.
+                </div>
+            )}
         </div>
     );
 };
@@ -85,6 +145,8 @@ const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GameP
                                 if (p.selectedAction === 'DEFEND') actionText = '🛡️ 철벽 방어';
                                 else if (p.pendingAttacks.length > 0) actionText = `⚔️ 침공 (${p.pendingAttacks.length}곳)`;
                                 else if (p.pendingShop === 'BUY_LAND') actionText = '💰 영토 매입';
+                                else if (phase === 'ACTION_SELECT' && p.selectedAction) actionText = '✅ 제출 완료';
+                                else if (phase === 'ACTION_SELECT') actionText = '⏳ 고민 중...';
                                 else actionText = '대기중';
                             }
                             
@@ -464,7 +526,7 @@ const App: React.FC = () => {
             const now = Date.now();
             
             // 1. Identify disconnected players
-            prev => {
+            setGameState(prev => {
                 const disconnectedIds: string[] = [];
                 prev.players.forEach(p => {
                     const lastPing = lastPingMap.current[p.id];
@@ -486,7 +548,7 @@ const App: React.FC = () => {
                      // DO NOT filter players out from state to allow reconnection persistence
                 }
                 return prev;
-            };
+            });
 
             // 2. Send PING
             connectionsRef.current.forEach(conn => {
@@ -1018,6 +1080,10 @@ const App: React.FC = () => {
       </div>
 
       <PhaseVisual phase={gameState.phase} />
+
+      {gameState.phase === 'ACTION_SELECT' && (
+         <SubmissionStatusBoard players={gameState.players} />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
