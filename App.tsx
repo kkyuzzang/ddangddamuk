@@ -1559,7 +1559,7 @@ const App: React.FC = () => {
         {mode === 'MENU' && (
           <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-12 border-t-8 border-indigo-600">
             <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-10 text-center text-white">
-              <h1 className="text-4xl font-extrabold mb-2 tracking-tight drop-shadow-md">Quiz Land Grab</h1>
+              <h1 className="text-4xl font-extrabold mb-2 tracking-tight drop-shadow-md">삼국지 땅따먹기</h1>
               <p className="text-indigo-100 font-medium">지략과 전략의 천하통일 게임</p>
             </div>
             <div className="p-8 space-y-6">
