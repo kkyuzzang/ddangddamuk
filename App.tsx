@@ -8,11 +8,14 @@ import { GameMap } from './components/GameMap';
 import { Button } from './components/Button';
 
 // -- Assets --
-// Updated to Google Drive direct links based on user request.
+// Google Drive IDs extracted from your links:
+// 외교: 1pv6Owdj9mGBy0CGagJaa2qBoQ320w5Yi
+// 퀴즈: 1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4
+// 전략: 1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk
 const IMAGES = {
-  QUIZ: "https://drive.google.com/uc?id=1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4", // 지략의 시간 (퀴즈)
-  ACTION: "https://drive.google.com/uc?id=1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk", // 전쟁의 서막 (전략)
-  DIPLOMACY: "https://drive.google.com/uc?id=1pv6Owdj9mGBy0CGagJaa2qBoQ320w5Yi" // 천하 정세 (외교)
+  QUIZ: "https://lh3.googleusercontent.com/d/1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4", 
+  ACTION: "https://lh3.googleusercontent.com/d/1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk", 
+  DIPLOMACY: "https://lh3.googleusercontent.com/d/1pv6Owdj9mGBy0CGagJaa2qBoQ320w5Yi" 
 };
 
 // -- Sub-Components --
@@ -37,7 +40,7 @@ const PhaseVisual = ({ phase }: { phase: GamePhase }) => {
             color = "border-red-500 bg-red-50";
             break;
         case 'ROUND_RESULT':
-        case 'GAME_OVER': // Show Diplomacy/End image for game over too
+        case 'GAME_OVER': 
             imgUrl = IMAGES.DIPLOMACY;
             title = phase === 'GAME_OVER' ? "천하 통일 (종료)" : "천하 정세 (외교)";
             desc = phase === 'GAME_OVER' ? "긴 전쟁이 끝났습니다." : "유비의 덕으로 동맹을 맺고 적을 파악하라!";
@@ -68,8 +71,6 @@ const PhaseVisual = ({ phase }: { phase: GamePhase }) => {
 };
 
 const SubmissionStatusBoard = ({ players, phase }: { players: Player[], phase: GamePhase }) => {
-    // For Quiz: check if lastAnswerCorrect is set (boolean)
-    // For Action: check if selectedAction is set
     const checkSubmitted = (p: Player) => {
         if (phase === 'QUIZ') return p.lastAnswerCorrect !== undefined;
         if (phase === 'ACTION_SELECT') return !!p.selectedAction;
@@ -198,7 +199,6 @@ const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GameP
 };
 
 const Leaderboard = ({ players, myPlayerId }: { players: Player[], myPlayerId?: string }) => {
-    // Sort by Lands (desc), then Coins (desc), then Name
     const sortedPlayers = [...players].sort((a, b) => {
         if (b.lands.length !== a.lands.length) return b.lands.length - a.lands.length;
         if (b.coins !== a.coins) return b.coins - a.coins;
@@ -521,13 +521,8 @@ const GuestActionView = ({
     );
 };
 
-// -- Main App Component --
-
 const App: React.FC = () => {
-  // Mode Selection
   const [mode, setMode] = useState<'MENU' | 'HOST' | 'GUEST'>('MENU');
-  
-  // Game State
   const [gameState, setGameState] = useState<GameState>({
     roomCode: 'CLASS1',
     phase: 'LOBBY',
@@ -543,43 +538,31 @@ const App: React.FC = () => {
     lastRoundEvents: []
   });
 
-  // Local state for Host Map Fullscreen
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
-
-  // Keep a Ref of GameState to access latest state in PeerJS callbacks
   const gameStateRef = useRef(gameState);
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
 
-  // Local Player State
   const [myPlayerId, setMyPlayerId] = useState<string>('');
   const [joinName, setJoinName] = useState('');
   const [joinRoomCode, setJoinRoomCode] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('');
-  
-  // Host Specific Local State
   const [targetQuizCount, setTargetQuizCount] = useState<number>(DEFAULT_QUIZZES.length);
 
-  // Action State (Guest)
   const [selectedLandIds, setSelectedLandIds] = useState<number[]>([]);
   const [actionLocked, setActionLocked] = useState(false);
-  const [pendingShopItem, setPendingShopItem] = useState<'PIERCE' | 'BUY_LAND' | undefined>(); // Hoisted state
+  const [pendingShopItem, setPendingShopItem] = useState<'PIERCE' | 'BUY_LAND' | undefined>();
 
-  // PeerJS Refs
   const peerRef = useRef<Peer | null>(null);
-  const connectionsRef = useRef<DataConnection[]>([]); // For Host: list of student connections
-  const hostConnRef = useRef<DataConnection | null>(null); // For Guest: connection to host
-  
-  // Refs for logic that doesn't need re-render
+  const connectionsRef = useRef<DataConnection[]>([]);
+  const hostConnRef = useRef<DataConnection | null>(null);
   const lastPingMap = useRef<Record<string, number>>({});
   
-  // Timer Refs
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerCallbackRef = useRef<(() => void) | null>(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
@@ -591,808 +574,256 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // -- Networking Logic (PeerJS) --
-
   const getPeerId = (code: string) => `quiz-land-grab-${code}`; 
-
   const peerConfig = {
     debug: 1,
     config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' }
-      ]
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }]
     }
   };
 
-  // Heartbeat Logic
   const startHeartbeat = (isHost: boolean) => {
     if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
-
     heartbeatIntervalRef.current = setInterval(() => {
         if (isHost) {
-            // Host: Send PING to all, REMOVE DEAD CONNECTIONS BUT KEEP PLAYERS IN STATE
-            // This allows reconnection with persistence
             const now = Date.now();
-            
-            // 1. Identify disconnected players
             setGameState(prev => {
                 const disconnectedIds: string[] = [];
                 prev.players.forEach(p => {
                     const lastPing = lastPingMap.current[p.id];
                     if (!lastPing) return; 
-                    if (now - lastPing > 15000) {
-                        disconnectedIds.push(p.id);
-                    }
+                    if (now - lastPing > 15000) disconnectedIds.push(p.id);
                 });
-
                 if (disconnectedIds.length > 0) {
-                     // We just close connections, we do NOT remove from state.
                      disconnectedIds.forEach(id => {
-                        const conn = connectionsRef.current.find(c => c.metadata?.playerId === id);
-                        if (conn && conn.open) {
-                             console.log(`Closing connection for inactive player: ${id}`);
-                             conn.close();
-                        }
+                        const conn = connectionsRef.current.find(c => (c as any).metadata?.playerId === id);
+                        if (conn && conn.open) conn.close();
                      });
-                     // DO NOT filter players out from state to allow reconnection persistence
                 }
                 return prev;
             });
-
-            // 2. Send PING
             connectionsRef.current.forEach(conn => {
-                if (conn.open) {
-                    conn.send({ type: 'HEARTBEAT', payload: null });
-                }
+                if (conn.open) conn.send({ type: 'HEARTBEAT', payload: null });
             });
-
-        } else {
-            // Guest logic if needed
         }
     }, 2000);
   };
 
-  // HOST: Start Server
   const initializeHost = (code: string) => {
     if (peerRef.current) peerRef.current.destroy();
-
-    setConnectionStatus('방 생성 중... (서버 연결 대기)');
-    
+    setConnectionStatus('방 생성 중...');
     try {
       const peer = new Peer(getPeerId(code), peerConfig);
-      
-      peer.on('open', (id) => {
-        console.log('Host ID Opened:', id);
-        setConnectionStatus('방이 생성되었습니다! 학생들이 입장할 수 있습니다.');
+      peer.on('open', () => {
+        setConnectionStatus('방 생성 완료!');
         peerRef.current = peer;
         startHeartbeat(true);
       });
-
       peer.on('connection', (conn) => {
-        console.log('New connection received from:', conn.peer);
         connectionsRef.current.push(conn);
-
-        conn.on('data', (data: any) => {
-          handleMessage(data, conn);
-        });
-
+        conn.on('data', (data: any) => handleMessage(data, conn));
         conn.on('close', () => {
-          console.log('Client disconnected:', conn.peer);
           connectionsRef.current = connectionsRef.current.filter(c => c !== conn);
         });
-
-        conn.on('error', (err) => {
-          console.error('Connection error:', err);
-        });
-
         conn.on('open', () => {
-          console.log('Connection established, sending state to:', conn.peer);
-          setTimeout(() => {
-             conn.send({ type: 'STATE_UPDATE', payload: gameStateRef.current });
-          }, 100);
+          setTimeout(() => conn.send({ type: 'STATE_UPDATE', payload: gameStateRef.current }), 100);
         });
       });
-
       peer.on('error', (err: any) => {
-        console.error('Peer Error:', err);
-        if (err.type === 'unavailable-id') {
-          alert('이미 사용 중인 방 코드입니다. 잠시 후 다시 시도하거나 다른 코드를 사용하세요.');
-          setConnectionStatus('방 코드 중복됨');
-          setMode('MENU');
-        } else if (err.type === 'network') {
-           setConnectionStatus('네트워크 오류. 인터넷 연결을 확인하세요.');
-        } else {
-           setConnectionStatus(`오류 발생: ${err.type}`);
-        }
+        if (err.type === 'unavailable-id') alert('사용 중인 코드입니다.');
+        setMode('MENU');
       });
-      
       peerRef.current = peer;
-    } catch (e) {
-      console.error(e);
-      setConnectionStatus('초기화 오류');
-    }
+    } catch (e) { setConnectionStatus('초기화 오류'); }
   };
 
-  // GUEST: Join Server
   const initializeGuest = (code: string, player: Player) => {
     if (peerRef.current) peerRef.current.destroy();
-
-    setConnectionStatus('선생님 컴퓨터 찾는 중...');
-    
+    setConnectionStatus('연결 시도 중...');
     const peer = new Peer(peerConfig); 
     peerRef.current = peer;
-
     peer.on('open', () => {
-      setConnectionStatus('서버 접속 성공. 선생님 방에 연결 시도...');
-      
-      const conn = peer.connect(getPeerId(code), {
-        reliable: true,
-        metadata: { playerId: player.id }
-      });
-      
+      const conn = peer.connect(getPeerId(code), { reliable: true, metadata: { playerId: player.id } });
       conn.on('open', () => {
-        console.log('Connected to Host!');
         setConnectionStatus('연결 성공!');
         hostConnRef.current = conn;
-        
         conn.send({ type: 'PLAYER_JOIN', payload: player });
       });
-
       conn.on('data', (data: any) => {
         if (data && data.type === 'STATE_UPDATE') {
           setGameState(data.payload);
-          
-          // CRITICAL FIX: Use gameStateRef to check CURRENT phase before reset
-          // If we use 'gameState' from closure, it might be initial state 'LOBBY'
-          const currentPhase = gameStateRef.current.phase;
-          const newPhase = data.payload.phase;
-
-          // Unlock local state when new action phase starts
-          if (newPhase === 'ACTION_SELECT' && currentPhase !== 'ACTION_SELECT') {
-            setActionLocked(false);
-            setSelectedLandIds([]);
-            setPendingShopItem(undefined);
+          if (data.payload.phase === 'ACTION_SELECT' && gameStateRef.current.phase !== 'ACTION_SELECT') {
+            setActionLocked(false); setSelectedLandIds([]); setPendingShopItem(undefined);
           }
         } else if (data && data.type === 'HEARTBEAT') {
-            // Respond to ping
             conn.send({ type: 'HEARTBEAT_ACK', payload: { playerId: player.id } });
         }
       });
-
-      conn.on('close', () => {
-        alert('선생님과의 연결이 끊어졌습니다.');
-        setMode('MENU');
-      });
-
-      conn.on('error', (err) => {
-        console.error('Connection error:', err);
-        setConnectionStatus('연결 실패. 방 코드가 정확한지 확인하세요.');
-      });
-
-      setTimeout(() => {
-        if (!conn.open) {
-            setConnectionStatus('연결 시간이 초과되었습니다. 방 코드를 다시 확인해주세요.');
-        }
-      }, 5000);
-    });
-
-    peer.on('error', (err: any) => {
-        console.error('Peer error:', err);
-        setConnectionStatus(`연결 오류: ${err.type}`);
     });
   };
 
   const broadcastState = useCallback((state: GameState) => {
     if (mode === 'HOST') {
-      connectionsRef.current.forEach(conn => {
-        if (conn.open) {
-          conn.send({ type: 'STATE_UPDATE', payload: state });
-        }
-      });
+      connectionsRef.current.forEach(conn => { if (conn.open) conn.send({ type: 'STATE_UPDATE', payload: state }); });
     }
   }, [mode]);
 
-  useEffect(() => {
-    if (mode === 'HOST') {
-      broadcastState(gameState);
-    }
-  }, [gameState, mode, broadcastState]);
+  useEffect(() => { if (mode === 'HOST') broadcastState(gameState); }, [gameState, mode, broadcastState]);
 
-
-  // -- Message Handling (Host Only) --
   const handleMessage = (msg: BroadcastMessage, conn?: DataConnection) => {
-    if (msg.type === 'PLAYER_JOIN') {
-      handlePlayerJoin(msg.payload, conn);
-    } else if (msg.type === 'PLAYER_ACTION') {
-      handlePlayerAction(msg.payload);
-    } else if (msg.type === 'HEARTBEAT_ACK') {
+    if (msg.type === 'PLAYER_JOIN') handlePlayerJoin(msg.payload, conn);
+    else if (msg.type === 'PLAYER_ACTION') handlePlayerAction(msg.payload);
+    else if (msg.type === 'HEARTBEAT_ACK') {
         const pid = msg.payload.playerId;
-        if (pid) {
-            lastPingMap.current[pid] = Date.now();
-        }
+        if (pid) lastPingMap.current[pid] = Date.now();
     }
   };
 
   const handlePlayerJoin = (newPlayer: Player, conn?: DataConnection) => {
-    if (conn) {
-        // Fix: Explicitly cast to any to allow assignment to readonly metadata
-        (conn as any).metadata = { playerId: newPlayer.id };
-    }
+    if (conn) (conn as any).metadata = { playerId: newPlayer.id };
     lastPingMap.current[newPlayer.id] = Date.now();
 
     setGameState(prev => {
-      const existingPlayerIndex = prev.players.findIndex(p => p.name === newPlayer.name);
-      
-      if (existingPlayerIndex !== -1) {
-        // RECONNECTION LOGIC:
-        // Update the player ID to the new one, BUT keep the lands and coins.
-        // Also need to update LANDS ownership to the new ID.
-        const oldId = prev.players[existingPlayerIndex].id;
+      const existingIdx = prev.players.findIndex(p => p.name === newPlayer.name);
+      if (existingIdx !== -1) {
+        const oldId = prev.players[existingIdx].id;
         const newId = newPlayer.id;
-
         const updatedPlayers = [...prev.players];
-        updatedPlayers[existingPlayerIndex] = {
-          ...updatedPlayers[existingPlayerIndex],
-          id: newId, // Update ID
-          // Keep other stats (coins, etc.)
-        };
-
-        // Update Lands ownership
-        const updatedLands = prev.lands.map(land => {
-           if (land.ownerId === oldId) {
-             return { ...land, ownerId: newId };
-           }
-           return land;
-        });
-
-        // Also update the player's internal land reference if it existed (though usually redundant as lands is derived from map in some logic, but kept in player for easy access)
-        updatedPlayers[existingPlayerIndex].lands = updatedLands.filter(l => l.ownerId === newId).map(l => l.id);
-
-        return {
-          ...prev,
-          players: updatedPlayers,
-          lands: updatedLands,
-          logs: [...prev.logs, `${newPlayer.name}님이 재접속했습니다. (영토 복구됨)`]
-        };
+        updatedPlayers[existingIdx] = { ...updatedPlayers[existingIdx], id: newId };
+        const updatedLands = prev.lands.map(land => land.ownerId === oldId ? { ...land, ownerId: newId } : land);
+        updatedPlayers[existingIdx].lands = updatedLands.filter(l => l.ownerId === newId).map(l => l.id);
+        return { ...prev, players: updatedPlayers, lands: updatedLands, logs: [`${newPlayer.name} 재접속`, ...prev.logs] };
       }
 
-      // New Player Logic with Avatar Uniqueness check
       let assignedAvatar = newPlayer.avatar;
-      
-      // If we have fewer players than unique avatars, enforce uniqueness
       if (prev.players.length < AVATARS.length) {
           const usedAvatars = new Set(prev.players.map(p => p.avatar));
-          
           if (usedAvatars.has(assignedAvatar)) {
-              const availableAvatars = AVATARS.filter(a => !usedAvatars.has(a));
-              if (availableAvatars.length > 0) {
-                  // Pick a random available avatar
-                  assignedAvatar = availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
-              }
+              const available = AVATARS.filter(a => !usedAvatars.has(a));
+              if (available.length > 0) assignedAvatar = available[Math.floor(Math.random() * available.length)];
           }
       }
 
-      // New Player Logic with Color Uniqueness check
       let assignedColor = newPlayer.color;
       if (prev.players.length < COLORS.length) {
           const usedColors = new Set(prev.players.map(p => p.color));
-          
           if (usedColors.has(assignedColor)) {
-              const availableColors = COLORS.filter(c => !usedColors.has(c));
-              if (availableColors.length > 0) {
-                  assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)];
-              }
+              const available = COLORS.filter(c => !usedColors.has(c));
+              if (available.length > 0) assignedColor = available[Math.floor(Math.random() * available.length)];
           }
       }
       
       const playerToAdd = { ...newPlayer, avatar: assignedAvatar, color: assignedColor };
-
-      return {
-        ...prev,
-        players: [...prev.players, playerToAdd],
-        logs: [...prev.logs, `${playerToAdd.name}님이 입장했습니다.`]
-      };
+      return { ...prev, players: [...prev.players, playerToAdd], logs: [`${playerToAdd.name} 입장`, ...prev.logs] };
     });
   };
 
   const handlePlayerAction = (action: { playerId: string, type: string, data: any }) => {
     setGameState(prev => {
-      // 1. Update Player State
       const players = prev.players.map(p => {
         if (p.id !== action.playerId) return p;
-        
         if (action.type === 'ANSWER') {
-          const currentQuiz = prev.quizzes[prev.currentQuizIndex];
-          const isCorrect = action.data.answerIndex === currentQuiz.correctIndex;
-          return {
-            ...p,
-            lastAnswerCorrect: isCorrect,
-            coins: isCorrect ? p.coins + 1 : p.coins
-          };
+          const isCorrect = action.data.answerIndex === prev.quizzes[prev.currentQuizIndex].correctIndex;
+          return { ...p, lastAnswerCorrect: isCorrect, coins: isCorrect ? p.coins + 1 : p.coins };
         }
-
         if (action.type === 'STRATEGY') {
-          return {
-            ...p,
-            selectedAction: action.data.action,
-            pendingAttacks: action.data.targets || [],
-            pendingShop: action.data.shopItem || null
-          };
+          return { ...p, selectedAction: action.data.action, pendingAttacks: action.data.targets || [], pendingShop: action.data.shopItem || null };
         }
         return p;
       });
-
-      const newState = { ...prev, players };
-
-      // 2. Check for "All Answered" Condition if in Quiz Phase
       if (prev.phase === 'QUIZ' && action.type === 'ANSWER') {
-        const answeredCount = players.filter(p => p.lastAnswerCorrect !== undefined).length;
-        if (answeredCount >= players.length) {
-          // If everyone answered, stop timer and end phase immediately
-          setTimeout(() => {
-              if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-              endQuizPhase(newState);
-          }, 500);
+        if (players.filter(p => p.lastAnswerCorrect !== undefined).length >= players.length) {
+          setTimeout(() => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); endQuizPhase({ ...prev, players }); }, 500);
         }
       }
-
-      return newState;
+      return { ...prev, players };
     });
   };
 
-
-  // -- Game Actions --
-
   const startGame = () => {
-    const selectedQuizzes = gameState.quizzes.slice(0, targetQuizCount);
     const lands = generateMap(gameState.totalLands);
-    const landsWithOwners = assignInitialLands(lands, gameState.players);
-    
-    const resetPlayers = gameState.players.map(p => ({
-        ...p,
-        lastAnswerCorrect: undefined,
-        isEliminated: false,
-        coins: 0,
-        lands: [],
-    }));
-
+    const resetPlayers = gameState.players.map(p => ({ ...p, lastAnswerCorrect: undefined, isEliminated: false, coins: 0, lands: [] }));
     const finalLands = assignInitialLands(lands, resetPlayers);
-
-    setGameState(prev => ({
-      ...prev,
-      phase: 'QUIZ',
-      players: resetPlayers,
-      lands: finalLands,
-      quizzes: selectedQuizzes,
-      round: 1,
-      currentQuizIndex: 0,
-      timer: prev.quizDuration,
-      logs: ['📢 제 1 라운드 시작!', '게임이 시작되었습니다.'],
-      lastRoundEvents: []
-    }));
-
+    setGameState(prev => ({ ...prev, phase: 'QUIZ', players: resetPlayers, lands: finalLands, quizzes: prev.quizzes.slice(0, targetQuizCount), round: 1, currentQuizIndex: 0, timer: prev.quizDuration, lastRoundEvents: [] }));
     startTimer(gameState.quizDuration, () => endQuizPhase());
   };
 
   const startTimer = (seconds: number, onComplete: () => void) => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    timerCallbackRef.current = onComplete; // Store callback for extension
-    
+    timerCallbackRef.current = onComplete;
     let timeLeft = seconds;
     timerIntervalRef.current = setInterval(() => {
       timeLeft -= 1;
       setGameState(prev => ({ ...prev, timer: timeLeft }));
-      
-      if (timeLeft <= 0) {
-        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-        onComplete();
-      }
+      if (timeLeft <= 0) { clearInterval(timerIntervalRef.current!); onComplete(); }
     }, 1000);
   };
 
   const addTime = (seconds: number) => {
-      // Calculate new time based on current state ref to be safe
-      const currentTimer = gameStateRef.current.timer;
-      const newTime = currentTimer + seconds;
-      
-      // Update state immediately
+      const newTime = gameStateRef.current.timer + seconds;
       setGameState(prev => ({ ...prev, timer: newTime }));
-      
-      // Restart timer with new duration if we have a callback
-      if (timerCallbackRef.current) {
-         startTimer(newTime, timerCallbackRef.current);
-      }
+      if (timerCallbackRef.current) startTimer(newTime, timerCallbackRef.current);
   };
 
-  const endQuizPhase = (currentStateOverride?: GameState) => {
-    const transition = (prevState: GameState) => ({
-      ...prevState,
-      phase: 'ACTION_SELECT' as GamePhase,
-      timer: 30
-    });
-
-    if (currentStateOverride) {
-        setGameState(transition(currentStateOverride));
-    } else {
-        setGameState(prev => transition(prev));
-    }
-    
+  const endQuizPhase = (override?: GameState) => {
+    const transition = (s: GameState) => ({ ...s, phase: 'ACTION_SELECT' as GamePhase, timer: 30 });
+    setGameState(prev => transition(override || prev));
     startTimer(30, () => resolveRound());
   };
 
   const resolveRound = () => {
     setGameState(prev => {
       const { nextState, messages } = resolveTurn(prev);
-      return {
-        ...nextState,
-        phase: 'ROUND_RESULT',
-        logs: [...messages, ...prev.logs],
-        timer: 0 // No timer for result phase, manual advance
-      };
+      return { ...nextState, phase: 'ROUND_RESULT', logs: [...messages, ...prev.logs], timer: 0 };
     });
-    // Stop timer for manual progression
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
   };
 
   const nextRound = () => {
     setGameState(prev => {
       const nextIdx = prev.currentQuizIndex + 1;
-      if (nextIdx >= prev.quizzes.length) {
-        return { ...prev, phase: 'GAME_OVER' };
-      }
-      
-      const nextPlayers = prev.players.map(p => ({
-          ...p,
-          lastAnswerCorrect: undefined,
-          selectedAction: undefined,
-          pendingAttacks: [],
-          pendingShop: null
-      }));
-
-      return {
-        ...prev,
-        players: nextPlayers,
-        phase: 'QUIZ',
-        currentQuizIndex: nextIdx,
-        round: prev.round + 1,
-        timer: prev.quizDuration,
-        lastRoundEvents: [],
-        logs: [`📢 제 ${prev.round + 1} 라운드 시작!`, ...prev.logs]
-      };
+      if (nextIdx >= prev.quizzes.length) return { ...prev, phase: 'GAME_OVER' };
+      return { ...prev, players: prev.players.map(p => ({ ...p, lastAnswerCorrect: undefined, selectedAction: undefined, pendingAttacks: [], pendingShop: null })), phase: 'QUIZ', currentQuizIndex: nextIdx, round: prev.round + 1, timer: prev.quizDuration, lastRoundEvents: [] };
     });
     startTimer(gameState.quizDuration, () => endQuizPhase());
   };
 
-  // CSV Import
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Use FileReader as ArrayBuffer to handle encoding manually
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const buffer = evt.target?.result as ArrayBuffer;
-      let text = '';
-      
-      // Try to decode as UTF-8 first
-      try {
-        const decoder = new TextDecoder('utf-8', { fatal: true });
-        text = decoder.decode(buffer);
-      } catch (e) {
-        // If UTF-8 fails, try EUC-KR (common for Korean Excel CSVs)
-        try {
-            const decoder = new TextDecoder('euc-kr');
-            text = decoder.decode(buffer);
-        } catch (e2) {
-            alert('파일 인코딩을 읽을 수 없습니다. UTF-8 또는 EUC-KR 형식이어야 합니다.');
-            return;
-        }
-      }
-
-      const lines = text.split('\n');
-      const newQuizzes: Quiz[] = [];
-      // Skip the first line (header) using slice(1)
-      lines.slice(1).forEach((line, idx) => {
-        const cols = line.split(',');
-        if (cols.length >= 6) {
-          const qText = cols[0].trim();
-          if (!qText) return; // Skip empty lines
-          // User inputs 1, 2, 3, 4. We need 0, 1, 2, 3. So subtract 1.
-          const ansIdx = (parseInt(cols[5].trim()) || 1) - 1;
-          
-          newQuizzes.push({
-            id: `csv-${idx}`,
-            question: qText,
-            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
-            correctIndex: ansIdx
-          });
-        }
-      });
-      if (newQuizzes.length > 0) {
-        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
-        setTargetQuizCount(newQuizzes.length);
-        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다! (한글 디코딩 완료, 1행 스킵됨)`);
-      } else {
-          alert('유효한 퀴즈를 찾지 못했습니다. CSV 형식을 확인해주세요.');
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  const downloadSampleCSV = () => {
-      const csvContent = "문제,보기1,보기2,보기3,보기4,정답번호(1-4)\n예시문제: 하늘은 무슨 색인가요?,빨강,파랑,노랑,검정,2";
-      // Add BOM for Excel to recognize UTF-8 automatically
-      const BOM = "\uFEFF";
-      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", "quiz_sample.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-  };
-
-  // -- Guest Interactions --
-
   const joinGame = () => {
     if (!joinName || !joinRoomCode) return;
-    const id = `p-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const newPlayer: Player = {
-      id,
-      name: joinName,
-      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)],
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      coins: 0,
-      lands: [],
-      isEliminated: false,
-      pendingAttacks: [],
-      isDefending: false
-    };
-
-    setMyPlayerId(id);
-    setGameState(prev => ({ ...prev, roomCode: joinRoomCode }));
-    setMode('GUEST');
-    
+    const id = `p-${Date.now()}`;
+    const newPlayer: Player = { id, name: joinName, avatar: AVATARS[0], color: COLORS[0], coins: 0, lands: [], isEliminated: false, pendingAttacks: [], isDefending: false };
+    setMyPlayerId(id); setGameState(prev => ({ ...prev, roomCode: joinRoomCode })); setMode('GUEST');
     initializeGuest(joinRoomCode, newPlayer);
   };
 
-  const submitAnswer = (idx: number) => {
-    if (hostConnRef.current) {
-        hostConnRef.current.send({
-          type: 'PLAYER_ACTION',
-          payload: {
-            playerId: myPlayerId,
-            type: 'ANSWER',
-            data: { answerIndex: idx }
-          }
-        });
-    }
-  };
-
-  const submitStrategy = (action: 'ATTACK' | 'DEFEND', targets: number[], shopItem?: 'PIERCE' | 'BUY_LAND') => {
-    setActionLocked(true);
-    hostConnRef.current?.send({
-      type: 'PLAYER_ACTION',
-      payload: {
-        playerId: myPlayerId,
-        type: 'STRATEGY',
-        data: { action, targets, shopItem }
-      }
-    });
-  };
-
-  // -- Render Helpers --
+  const submitAnswer = (idx: number) => hostConnRef.current?.send({ type: 'PLAYER_ACTION', payload: { playerId: myPlayerId, type: 'ANSWER', data: { answerIndex: idx } } });
 
   const renderHostDashboard = () => (
-    <div className={`p-6 max-w-6xl mx-auto space-y-6 transition-colors duration-500 rounded-2xl ${gameState.phase === 'ACTION_SELECT' ? 'bg-red-100/50' : ''} ${gameState.phase === 'ROUND_RESULT' ? 'bg-yellow-100/50' : ''}`}>
-      <div className={`flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border-l-4 ${gameState.phase === 'ACTION_SELECT' ? 'border-red-500' : gameState.phase === 'ROUND_RESULT' ? 'border-yellow-500' : 'border-indigo-500'}`}>
-        <h1 className="text-2xl font-bold text-indigo-900 flex items-center gap-2">
-            {gameState.phase === 'ACTION_SELECT' ? '⚔️' : gameState.phase === 'ROUND_RESULT' ? '🤝' : '🏰'} 진행자 (선생님) 대시보드
-        </h1>
-        <div className="flex gap-4">
-           <div className="text-right">
-             <div className="text-xs text-gray-500">방 코드</div>
-             <div className="font-bold font-mono text-indigo-600">{gameState.roomCode}</div>
-           </div>
-           <div className="text-right">
-             <div className="text-xs text-gray-500">라운드</div>
-             <div className="font-bold">{gameState.round} / {gameState.quizzes.length}</div>
-           </div>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border-l-4 border-indigo-500">
+        <h1 className="text-2xl font-bold text-indigo-900">진행자 대시보드</h1>
+        <div className="text-right">
+          <div className="text-xs text-gray-500">방 코드: {gameState.roomCode}</div>
+          <div className="font-bold">라운드: {gameState.round} / {gameState.quizzes.length}</div>
         </div>
       </div>
-
       <PhaseVisual phase={gameState.phase} />
-
-      {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'QUIZ') && (
-         <SubmissionStatusBoard players={gameState.players} phase={gameState.phase} />
-      )}
-
-      {/* Game Over Leaderboard */}
-      {gameState.phase === 'GAME_OVER' && (
-          <Leaderboard players={gameState.players} />
-      )}
-
+      {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'QUIZ') && <SubmissionStatusBoard players={gameState.players} phase={gameState.phase} />}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <div className={`bg-white p-2 rounded-xl shadow-sm ${isMapFullscreen ? 'fixed inset-0 z-50 flex flex-col items-center justify-center p-8' : 'relative'}`}>
-             <div className="mb-2 text-sm font-semibold text-gray-500 px-2 flex justify-between w-full">
-                <span>실시간 천하 지도</span>
-                <div className="flex gap-4">
-                    <span>총 영토: {gameState.totalLands}</span>
-                    <button 
-                        onClick={() => setIsMapFullscreen(!isMapFullscreen)} 
-                        className="text-indigo-600 hover:text-indigo-800 underline font-bold"
-                    >
-                        {isMapFullscreen ? '전체화면 닫기' : '전체화면 보기'}
-                    </button>
-                </div>
-             </div>
-             <div className={isMapFullscreen ? 'w-full h-full flex items-center justify-center overflow-auto' : ''}>
-                <GameMap 
-                    lands={gameState.lands} 
-                    players={gameState.players} 
-                    combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []}
-                />
-             </div>
+          <div className="bg-white p-4 rounded-xl shadow-sm">
+             <GameMap lands={gameState.lands} players={gameState.players} combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []} />
           </div>
-          
-          <div className="bg-white p-4 rounded-xl shadow-sm h-64 overflow-y-auto">
-            <h3 className="font-bold text-gray-700 mb-2 border-b pb-2">실록 (게임 로그)</h3>
-            <ul className="text-sm space-y-2">
-              {gameState.logs.slice(0).reverse().map((log, i) => (
-                <li key={i} className="text-gray-600 border-b border-gray-100 pb-1 last:border-0">{log}</li>
-              ))}
-            </ul>
+          <div className="bg-white p-4 rounded-xl shadow-sm h-48 overflow-y-auto text-sm">
+            {gameState.logs.map((log, i) => <div key={i} className="border-b py-1">{log}</div>)}
           </div>
         </div>
-
-        <div className="space-y-4 flex flex-col h-full">
-            {/* Player Status - Visible during Quiz/Action/Result */}
-            {gameState.phase !== 'LOBBY' && gameState.phase !== 'GAME_OVER' && (
-                <div className="flex-1 overflow-y-auto max-h-[40vh] lg:max-h-[50vh]">
-                    <PlayerStatusTable players={gameState.players} phase={gameState.phase} />
-                </div>
-            )}
-
-          <div className="bg-white p-4 rounded-xl shadow-sm h-full">
-            <h3 className="font-bold mb-4 text-lg text-indigo-800">게임 설정 및 제어</h3>
-            {gameState.phase === 'LOBBY' && (
-              <div className="space-y-6">
-                <div className="space-y-4 bg-indigo-50 p-4 rounded-lg">
-                   <div>
-                     <label className="text-sm font-bold text-indigo-900 block mb-1">방 코드 설정</label>
-                     <div className="flex gap-2">
-                        <input 
-                          type="text"
-                          className="w-full border p-2 rounded uppercase font-mono font-bold text-center tracking-widest"
-                          value={gameState.roomCode}
-                          onChange={(e) => setGameState({...gameState, roomCode: e.target.value.toUpperCase()})}
-                          disabled={!!peerRef.current}
-                        />
-                     </div>
-                     {!peerRef.current && (
-                        <Button onClick={() => initializeHost(gameState.roomCode)} className="w-full mt-2" variant="primary">
-                            방 생성 및 서버 시작
-                        </Button>
-                     )}
-                     {connectionStatus && <p className="text-xs text-green-600 mt-1 font-bold">{connectionStatus}</p>}
-                   </div>
-
-                   {/* Other settings */}
-                   <div>
-                     <label className="text-sm font-bold text-indigo-900 block mb-1">맵 크기 (칸 수)</label>
-                     <div className="flex items-center gap-2">
-                       <input 
-                         type="range" min="12" max="60" step="1"
-                         className="w-full accent-indigo-600"
-                         value={gameState.totalLands}
-                         onChange={(e) => setGameState({...gameState, totalLands: parseInt(e.target.value)})}
-                       />
-                       <span className="font-mono font-bold w-8 text-right">{gameState.totalLands}</span>
-                     </div>
-                   </div>
-
-                   <div>
-                     <label className="text-sm font-bold text-indigo-900 block mb-1">문제 제한 시간 (초)</label>
-                     <div className="flex items-center gap-2">
-                       <input 
-                         type="range" min="5" max="60" step="5"
-                         className="w-full accent-indigo-600"
-                         value={gameState.quizDuration}
-                         onChange={(e) => setGameState({...gameState, quizDuration: parseInt(e.target.value)})}
-                       />
-                       <span className="font-mono font-bold w-8 text-right">{gameState.quizDuration}</span>
-                     </div>
-                   </div>
-                </div>
-                
-                <div className="space-y-2">
-                   <div className="flex justify-between items-center">
-                     <label className="text-sm font-semibold">퀴즈 업로드 (CSV)</label>
-                     <button onClick={downloadSampleCSV} className="text-xs text-blue-600 underline hover:text-blue-800">
-                         양식 다운로드
-                     </button>
-                   </div>
-                   <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-sm bg-gray-50 p-2 rounded border" />
-                   <p className="text-xs text-gray-500">UTF-8 또는 EUC-KR(한글 엑셀) 형식을 지원합니다. 첫 줄은 헤더로 간주하여 건너뜜니다.</p>
-                </div>
-                <hr className="border-gray-100" />
-                <LobbyView 
-                  isHost={true} 
-                  players={gameState.players} 
-                  onStart={startGame} 
-                  roomCode={gameState.roomCode}
-                  connectionStatus={connectionStatus}
-                  totalQuizzes={targetQuizCount}
-                  setTotalQuizzes={setTargetQuizCount}
-                  maxQuizzes={gameState.quizzes.length}
-                />
-              </div>
-            )}
-            
-            {gameState.phase === 'QUIZ' && (
-               <div className="text-center py-8">
-                 <div className="text-6xl font-black text-indigo-600 mb-4 animate-pulse">{gameState.timer}</div>
-                 <p className="text-lg font-medium text-gray-600">군주들이 지략을 겨루고 있습니다...</p>
-                 <div className="mt-8 flex gap-2 justify-center">
-                    <Button onClick={() => addTime(5)} className="bg-blue-500 hover:bg-blue-600 text-sm">⏱️ +5초</Button>
-                    <Button className="bg-gray-400 hover:bg-gray-500 text-sm" onClick={() => endQuizPhase()}>퀴즈 강제 종료</Button>
-                 </div>
-               </div>
-            )}
-
-            {gameState.phase === 'ACTION_SELECT' && (
-               <div className="text-center py-8">
-                 <div className="text-6xl font-black text-red-600 mb-4 animate-pulse">{gameState.timer}</div>
-                 <p className="text-lg font-medium text-red-800 font-bold">⚠️ 전쟁 준비 단계 (전략 수립 중)</p>
-                 <div className="mt-8 flex gap-2 justify-center">
-                    <Button onClick={() => addTime(5)} className="bg-blue-500 hover:bg-blue-600 text-sm">⏱️ +5초</Button>
-                    <Button className="bg-gray-400 hover:bg-gray-500 text-sm" onClick={() => resolveRound()}>결과 바로 보기</Button>
-                 </div>
-               </div>
-            )}
-
-            {gameState.phase === 'ROUND_RESULT' && (
-               <div className="text-center py-8">
-                 <p className="mb-4 text-xl font-bold text-green-600">외교 타임 (결과 확인 및 협상)</p>
-                 <p className="text-sm text-gray-500 mb-6">서로 대화하며 동맹을 맺거나 협상하는 시간입니다.</p>
-                 <Button onClick={nextRound} className="w-full py-4 text-lg shadow-lg animate-bounce mb-6">다음 라운드 시작 ▶</Button>
-                 
-                 {/* Summary Section for Teacher */}
-                 <div className="bg-yellow-50 rounded-xl p-4 text-left border border-yellow-200 max-h-48 overflow-y-auto">
-                    <h4 className="font-bold text-yellow-800 mb-2 sticky top-0 bg-yellow-50 pb-2 border-b border-yellow-200">📊 이번 라운드 요약</h4>
-                    <ul className="space-y-1 text-sm text-gray-700">
-                        {gameState.lastRoundEvents.length === 0 && <li>- 특별한 전투 기록이 없습니다.</li>}
-                        {gameState.lastRoundEvents.map((evt, i) => {
-                            if (evt.type === 'BOUGHT') {
-                                return <li key={i} className="text-blue-700">💰 {evt.attackerName}님이 {evt.landId+1}번 빈 땅을 구매함</li>;
-                            } else if (evt.type === 'CONQUERED') {
-                                // Conflict check
-                                const allAttackers = evt.allAttackers || [];
-                                if (allAttackers.length > 1) {
-                                     return <li key={i} className="text-red-700 font-bold">⚔️ [{allAttackers.join(', ')}] 격돌 ➜ 승자: {evt.attackerName} ({evt.landId+1}번 땅)</li>;
-                                }
-                                return <li key={i} className="text-red-700">⚔️ {evt.attackerName}님이 {evt.defenderName}의 {evt.landId+1}번 땅을 점령함</li>;
-                            } else if (evt.type === 'DEFENDED') {
-                                return <li key={i} className="text-green-700">🛡️ {evt.defenderName}님이 {evt.landId+1}번 땅 방어 성공</li>;
-                            } else if (evt.type === 'PIERCED') {
-                                return <li key={i} className="text-purple-700">🗡️ {evt.defenderName}님이 {evt.landId+1}번 땅에서 방어 관통 당함</li>;
-                            }
-                            return null;
-                        })}
-                    </ul>
-                 </div>
-               </div>
-            )}
-            
-            {gameState.phase === 'GAME_OVER' && (
-              <div className="text-center py-8">
-                <Button onClick={() => window.location.reload()} variant="secondary">로비로 돌아가기</Button>
-              </div>
-            )}
-          </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm h-full">
+            <h3 className="font-bold mb-4">제어</h3>
+            {gameState.phase === 'LOBBY' && <LobbyView isHost={true} players={gameState.players} onStart={startGame} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={setTargetQuizCount} maxQuizzes={gameState.quizzes.length} />}
+            {gameState.phase === 'QUIZ' && <div className="text-center py-8"><div className="text-6xl font-black mb-4">{gameState.timer}</div><Button onClick={() => addTime(5)}>⏱️ +5초</Button></div>}
+            {gameState.phase === 'ACTION_SELECT' && <div className="text-center py-8"><div className="text-6xl font-black mb-4">{gameState.timer}</div><Button onClick={() => resolveRound()}>결과 보기</Button></div>}
+            {gameState.phase === 'ROUND_RESULT' && <div className="text-center py-8"><Button onClick={nextRound} className="w-full">다음 라운드 시작 ▶</Button></div>}
         </div>
       </div>
     </div>
@@ -1400,330 +831,33 @@ const App: React.FC = () => {
 
   const renderGuestDashboard = () => {
     const me = gameState.players.find(p => p.id === myPlayerId);
-    if (!me) return <div className="p-8 text-center font-bold text-gray-500">플레이어 정보를 불러오는 중...</div>;
-
-    const toggleLandSelection = (landId: number) => {
-        if (actionLocked) return;
-        
-        const land = gameState.lands.find(l => l.id === landId);
-        if (!land) return;
-
-        // Rule: Cannot select own land
-        if (land.ownerId === myPlayerId) {
-            alert("우리 땅은 공격할 수 없습니다.");
-            return;
-        }
-
-        // Rule: Cannot select empty land
-        if (!land.ownerId) {
-            alert("빈 땅은 공격할 수 없습니다. '빈 땅 구매' 아이템을 이용하세요.");
-            return;
-        }
-
-        if (selectedLandIds.includes(landId)) {
-            setSelectedLandIds(selectedLandIds.filter(id => id !== landId));
-        } else {
-             const maxAttacks = me.lastAnswerCorrect ? 2 : 1;
-             // If buying land, selection logic is different or not needed here (since buying is random)
-             // But assuming this is purely for ATTACK selection:
-             if (selectedLandIds.length < maxAttacks) {
-                setSelectedLandIds([...selectedLandIds, landId]);
-             } else {
-                 // FIFO replacement if full
-                 if (maxAttacks === 1) {
-                     setSelectedLandIds([landId]);
-                 } else {
-                     setSelectedLandIds([...selectedLandIds.slice(1), landId]);
-                 }
-             }
-        }
-    };
-
-    const handleConfirmAttack = () => {
-        submitStrategy('ATTACK', selectedLandIds, pendingShopItem);
-    };
-
-    const handleDefend = () => {
-        submitStrategy('DEFEND', [], pendingShopItem);
-    };
-    
-    const onShopItemSelect = (item: 'PIERCE' | 'BUY_LAND' | undefined) => {
-        if (actionLocked) return;
-        setPendingShopItem(item);
-    };
-
-    if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') {
-       // Filter attacks where I was the WINNER
-       const myWins = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type !== 'BOUGHT');
-       // Filter attacks where I participated (was in allAttackers) but LOST (winner != me)
-       const myLosses = gameState.lastRoundEvents.filter(e => e.allAttackers && e.allAttackers.includes(me.name) && e.attackerName !== me.name);
-       // Filter attacks where I was blocked by defense
-       const myBlocked = gameState.lastRoundEvents.filter(e => e.type === 'DEFENDED' && e.allAttackers && e.allAttackers.includes(me.name));
-
-       const myPurchases = gameState.lastRoundEvents.filter(e => e.attackerName === me.name && e.type === 'BOUGHT');
-       
-       // Filter attacks against me (Conquered, Pierced, or Defended)
-       // For DEFENDED events, I am the defenderName.
-       const attackedMe = gameState.lastRoundEvents.filter(e => e.defenderName === me.name);
-
-       return (
-         <div className="p-4 space-y-4 max-w-4xl mx-auto">
-           <PhaseVisual phase={gameState.phase === 'GAME_OVER' ? 'ROUND_RESULT' : gameState.phase} />
-            
-           {gameState.phase === 'GAME_OVER' ? (
-                <Leaderboard players={gameState.players} myPlayerId={myPlayerId} />
-           ) : (
-             <h2 className="text-2xl font-bold text-center mb-4 text-indigo-800 bg-white p-2 rounded-lg shadow-sm">
-               🤝 외교 타임
-             </h2>
-           )}
-           
-           <div className="bg-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center border-b-4 border-indigo-100">
-             <div>
-               <div className="text-xs text-gray-500 font-bold">국고 (군자금)</div>
-               <div className="text-2xl font-bold text-yellow-500 flex items-center drop-shadow-sm">
-                 💰 {me.coins}금
-               </div>
-             </div>
-             <div className="text-right">
-               <div className="text-xs text-gray-500 font-bold">직전 퀴즈 결과</div>
-               <div className={`font-bold text-lg ${me.lastAnswerCorrect ? 'text-green-600' : 'text-red-500'}`}>
-                 {me.lastAnswerCorrect ? '승리! (+1금)' : '패배'}
-               </div>
-             </div>
-          </div>
-           
-           <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 shadow-sm">
-             <h3 className="font-bold text-yellow-800 mb-3 text-lg border-b border-yellow-200 pb-2">📊 이번 라운드 전투 요약</h3>
-             <div className="space-y-3 text-sm">
-               <div className="bg-white p-3 rounded border border-yellow-100">
-                 <p className="font-bold text-blue-600 mb-1">⚔️ 내가 공격한 곳:</p>
-                 <div className="text-gray-700 space-y-1">
-                   {myWins.length === 0 && myLosses.length === 0 && myBlocked.length === 0 && <span>없음</span>}
-                   
-                   {/* Successful Attacks */}
-                   {myWins.map((e, idx) => {
-                       const isConflict = (e.allAttackers?.length || 0) > 1;
-                       return (
-                           <div key={`win-${idx}`} className="flex items-center gap-2">
-                               <span className="text-green-600 font-bold">✅ 승리:</span>
-                               <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
-                               {isConflict ? 
-                                   <span className="text-xs bg-orange-100 text-orange-700 px-2 rounded-full font-bold">치열한 전쟁 끝에 땅을 획득!</span> 
-                                   : <span className="text-xs text-gray-500">(점령 성공)</span>
-                               }
-                           </div>
-                       );
-                   })}
-                   
-                   {/* Failed Attacks (Lost conflict) */}
-                   {myLosses.map((e, idx) => (
-                       <div key={`loss-${idx}`} className="flex items-center gap-2">
-                           <span className="text-red-500 font-bold">❌ 패배:</span>
-                           <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
-                           <span className="text-xs bg-gray-200 text-gray-600 px-2 rounded-full font-bold">다른 나라의 국력에 밀림...</span>
-                       </div>
-                   ))}
-
-                   {/* Blocked Attacks */}
-                   {myBlocked.map((e, idx) => (
-                       <div key={`blocked-${idx}`} className="flex items-center gap-2">
-                           <span className="text-gray-500 font-bold">🛡️ 막힘:</span>
-                           <span>{e.defenderName || '빈 땅'}(#{e.landId+1})</span>
-                           <span className="text-xs bg-gray-100 text-gray-500 px-2 rounded-full font-bold">상대의 방어에 막혔습니다.</span>
-                       </div>
-                   ))}
-                 </div>
-               </div>
-               <div className="bg-white p-3 rounded border border-yellow-100">
-                 <p className="font-bold text-purple-600 mb-1">💰 내가 구매한 곳:</p>
-                 <p className="text-gray-700">
-                   {myPurchases.length > 0 
-                     ? myPurchases.map((e, idx) => <span key={idx} className="inline-block mr-2">No.{e.landId+1}{idx < myPurchases.length-1 ? ',' : ''}</span>) 
-                     : '없음'}
-                 </p>
-               </div>
-               <div className="bg-white p-3 rounded border border-yellow-100">
-                 <p className="font-bold text-red-600 mb-1">🛡️ 나를 공격한 사람:</p>
-                 <p className="text-gray-700">
-                   {attackedMe.length > 0 
-                     ? [...new Set(
-                         attackedMe.flatMap(e => e.allAttackers || [e.attackerName || ''])
-                       )].filter(Boolean).map((name, idx, arr) => <span key={idx} className="inline-block mr-2 font-bold">{name}{idx < arr.length-1 ? ',' : ''}</span>) 
-                     : '없음'}
-                 </p>
-               </div>
-             </div>
-           </div>
-
-           <GameMap 
-             lands={gameState.lands} 
-             players={gameState.players} 
-             myPlayerId={myPlayerId} 
-             combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []}
-           />
-           <div className="bg-white p-4 rounded-xl shadow border border-gray-100 max-h-40 overflow-y-auto">
-             {gameState.logs.slice(-5).reverse().map((l, i) => <p key={i} className="text-sm border-b py-2 text-gray-700">{l}</p>)}
-           </div>
-           
-           {gameState.phase !== 'GAME_OVER' && (
-               <div className="text-center mt-6">
-                 <span className="inline-block animate-bounce text-indigo-500">⏳</span>
-                 <p className="text-indigo-600 font-bold inline-block ml-2">선생님이 다음 라운드를 준비 중입니다...</p>
-               </div>
-           )}
-         </div>
-       );
-    }
-
-    return (
-        <GuestActionView 
-            me={me} 
-            gameState={gameState} 
-            myPlayerId={myPlayerId} 
-            actionLocked={actionLocked} 
-            selectedLandIds={selectedLandIds} 
-            toggleLandSelection={toggleLandSelection} 
-            handleConfirmAttack={handleConfirmAttack} 
-            handleDefend={handleDefend}
-            canDefend={me.lastAnswerCorrect && !me.isDefending}
-            allowedAttacks={me.lastAnswerCorrect ? 2 : 1}
-            onShopItemSelect={onShopItemSelect}
-            pendingShopItem={pendingShopItem}
-            prevQuiz={gameState.currentQuizIndex >= 0 ? gameState.quizzes[gameState.currentQuizIndex] : undefined}
-        />
-    );
+    if (!me) return null;
+    if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') return <div className="p-4"><PhaseVisual phase="ROUND_RESULT" /><Leaderboard players={gameState.players} myPlayerId={myPlayerId} /><GameMap lands={gameState.lands} players={gameState.players} myPlayerId={myPlayerId} combatEvents={gameState.lastRoundEvents} /></div>;
+    return <GuestActionView me={me} gameState={gameState} myPlayerId={myPlayerId} actionLocked={actionLocked} selectedLandIds={selectedLandIds} toggleLandSelection={(id: number) => { if (actionLocked) return; const land = gameState.lands.find(l => l.id === id); if (!land || land.ownerId === myPlayerId || !land.ownerId) return; setSelectedLandIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id].slice(-(me.lastAnswerCorrect ? 2 : 1))); }} handleConfirmAttack={() => { setActionLocked(true); hostConnRef.current?.send({ type: 'PLAYER_ACTION', payload: { playerId: myPlayerId, type: 'STRATEGY', data: { action: 'ATTACK', targets: selectedLandIds, shopItem: pendingShopItem } } }); }} handleDefend={() => { setActionLocked(true); hostConnRef.current?.send({ type: 'PLAYER_ACTION', payload: { playerId: myPlayerId, type: 'STRATEGY', data: { action: 'DEFEND', targets: [], shopItem: pendingShopItem } } }); }} canDefend={me.lastAnswerCorrect} allowedAttacks={me.lastAnswerCorrect ? 2 : 1} onShopItemSelect={setPendingShopItem} pendingShopItem={pendingShopItem} prevQuiz={gameState.quizzes[gameState.currentQuizIndex]} />;
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 font-sans text-gray-900">
+    <div className="min-h-screen bg-gray-100">
       <div className="container mx-auto px-4 py-8">
-        {mode === 'MENU' && (
-          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-12 border-t-8 border-indigo-600">
-            <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-10 text-center text-white">
-              <h1 className="text-4xl font-extrabold mb-2 tracking-tight drop-shadow-md">삼국지 땅따먹기</h1>
-              <p className="text-indigo-100 font-medium">지략과 전략의 천하통일 게임</p>
-            </div>
-            <div className="p-8 space-y-6">
-              <button 
-                onClick={() => setMode('HOST')}
-                className="w-full bg-indigo-50 text-indigo-700 py-4 rounded-xl font-bold text-lg hover:bg-indigo-100 transition shadow-sm border-2 border-indigo-100 flex items-center justify-center gap-2 group"
-              >
-                <span className="group-hover:scale-110 transition-transform">👑</span> 선생님(진행자)로 시작
-              </button>
-              
-              <div className="relative py-2">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-3 bg-white text-gray-400 font-medium">학생 참여</span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <input 
-                  type="text" 
-                  placeholder="이름 (닉네임)" 
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition font-bold text-gray-800 placeholder-gray-400"
-                  value={joinName}
-                  onChange={(e) => setJoinName(e.target.value)}
-                />
-                <input 
-                  type="text" 
-                  placeholder="방 코드 (예: CLASS1)" 
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition font-mono font-bold text-lg uppercase placeholder-gray-400 tracking-wider"
-                  value={joinRoomCode}
-                  onChange={(e) => setJoinRoomCode(e.target.value.toUpperCase())}
-                />
-                <button 
-                  onClick={joinGame}
-                  disabled={!joinName || !joinRoomCode}
-                  className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-indigo-700 hover:shadow-xl transition disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5"
-                >
-                  전쟁터로 입장하기
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
+        {mode === 'MENU' && <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-12"><div className="bg-indigo-600 p-10 text-center text-white"><h1 className="text-3xl font-bold">삼국지 땅따먹기</h1></div><div className="p-8 space-y-6"><Button onClick={() => setMode('HOST')} className="w-full" variant="secondary">👑 선생님(진행자) 시작</Button><div className="space-y-3"><input type="text" placeholder="이름" className="w-full p-4 border rounded-xl" value={joinName} onChange={e => setJoinName(e.target.value)} /><input type="text" placeholder="방 코드" className="w-full p-4 border rounded-xl" value={joinRoomCode} onChange={e => setJoinRoomCode(e.target.value.toUpperCase())} /><Button onClick={joinGame} className="w-full">전쟁터 입장</Button></div></div></div>}
         {mode === 'HOST' && renderHostDashboard()}
-
         {mode === 'GUEST' && (
           <div>
-             {/* Guest Header */}
-             {gameState.phase !== 'GAME_OVER' && (
-                <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border-l-4 border-indigo-500">
-                    <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm overflow-hidden border-2 border-gray-100`}>
-                            {gameState.players.find(p => p.id === myPlayerId)?.avatar && (
-                                <img 
-                                src={gameState.players.find(p => p.id === myPlayerId)?.avatar} 
-                                alt="avatar" 
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                                />
-                            )}
-                        </div>
-                        <div>
-                            <div className="text-xs text-gray-500 font-bold">나의 이름</div>
-                            <div className="font-bold text-gray-800">{gameState.players.find(p => p.id === myPlayerId)?.name || joinName}</div>
-                        </div>
-                    </div>
-                    <div className="text-right">
-                         <div className="text-xs text-gray-500 font-bold">현재 라운드</div>
-                         <div className="font-mono font-bold text-indigo-600">{gameState.round} / {gameState.quizzes.length}</div>
-                    </div>
-                </div>
-             )}
-
-            {gameState.phase === 'LOBBY' && (
-              <LobbyView 
-                isHost={false} 
-                players={gameState.players} 
-                onStart={() => {}} 
-                roomCode={gameState.roomCode}
-                connectionStatus={connectionStatus}
-                totalQuizzes={targetQuizCount}
-                setTotalQuizzes={() => {}}
-                maxQuizzes={gameState.quizzes.length}
-              />
-            )}
-
-            {gameState.phase === 'QUIZ' && (
-               <QuizView 
-                 quiz={gameState.quizzes[gameState.currentQuizIndex]}
-                 timeRemaining={gameState.timer}
-                 isHost={false}
-                 onAnswer={submitAnswer}
-               />
-            )}
-
+            {gameState.phase === 'LOBBY' && <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={() => {}} maxQuizzes={gameState.quizzes.length} />}
+            {gameState.phase === 'QUIZ' && <QuizView quiz={gameState.quizzes[gameState.currentQuizIndex]} timeRemaining={gameState.timer} isHost={false} onAnswer={submitAnswer} />}
             {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') && renderGuestDashboard()}
           </div>
         )}
-
-        <div className="mt-12 border-t border-gray-200 pt-6 text-center text-sm text-gray-500 pb-8">
-            <p className="font-bold mb-2 text-gray-700">만든 사람: 경기도 지구과학 교사 뀨짱</p>
-            <div className="flex justify-center items-center gap-3 flex-wrap">
-                <span>
-                    문의: <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800 transition">
-                        카카오톡 오픈채팅
-                    </a>
-                </span>
-                <span className="text-gray-300">|</span>
-                <span>
-                    블로그: <a href="https://eduarchive.tistory.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800 transition">
-                        뀨짱쌤의 교육자료 아카이브
-                    </a>
-                </span>
+        <div className="mt-12 border-t pt-6 text-center text-sm text-gray-500 pb-8">
+            <p className="font-bold mb-2">만든 사람: 경기도 지구과학 교사 뀨짱</p>
+            <div className="flex justify-center gap-3">
+                <span>문의: <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">카카오톡 오픈채팅</a></span>
+                <span>|</span>
+                <span>블로그: <a href="https://eduarchive.tistory.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">뀨짱쌤의 교육자료 아카이브</a></span>
             </div>
         </div>
-
       </div>
     </div>
   );
 };
-
 export default App;
