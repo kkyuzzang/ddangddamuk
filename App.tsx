@@ -8,11 +8,11 @@ import { GameMap } from './components/GameMap';
 import { Button } from './components/Button';
 
 // -- Assets --
-// Using stable Wikimedia URLs. The referrerPolicy="no-referrer" in the img tag is crucial for these to work.
+// Updated to Google Drive direct links based on user request.
 const IMAGES = {
-  QUIZ: "https://i.namu.wiki/i/_1ixWegWowx7Wu1rVufr7MLmOmXsxs1kAcBY5K7E9hTPCeyjqTMAE8CPUYl6jTMQZdd8K5YDY1QDMN1NPZulxntqpIIZrRkpC_UUOGiwkZPUrB5mTdoqcPZdyQK74cGyeqyEr6cfn8NGrxxug8wgPQ.webp", // Zhuge Liang (제갈량)
-  ACTION: "https://i.namu.wiki/i/T67odf_Xpmc5Tc4G2-se0dE0wCzrjskafmS2Coyl0gSSRODVUe_mNKoHsV7TUmxxfpJQ60h2I9jZgpJcOAAZOfOnk9Vi76yK4GlT45HpaPxnNPgtXeSJEJ0Dg7Wu4QFTv4-TWW8BFFCJiDK0BtHGkg.webp", // Guan Yu (전략)
-  DIPLOMACY: "https://i.namu.wiki/i/_W2ykDl-lHsuafd-nw4DWbO5LnVgdM0A5XiXEng4Fc9R-Ln74Wq6Fz7bdDS1awETtXK0vm6p6IFHiaqybuIv89WSU1pvNuTjlkHbClJP_ojMkPkoxyA6-P2TnK2aQAdqi0aRHTjy9LpCV1MOb9PNEQ.webp" // Liu Bei (외교)
+  QUIZ: "https://drive.google.com/uc?id=1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4", // 지략의 시간 (퀴즈)
+  ACTION: "https://drive.google.com/uc?id=1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk", // 전쟁의 서막 (전략)
+  DIPLOMACY: "https://drive.google.com/uc?id=1pv6Owdj9mGBy0CGagJaa2qBoQ320w5Yi" // 천하 정세 (외교)
 };
 
 // -- Sub-Components --
@@ -1316,7 +1316,7 @@ const App: React.FC = () => {
                      </button>
                    </div>
                    <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-sm bg-gray-50 p-2 rounded border" />
-                   <p className="text-xs text-gray-500">UTF-8 또는 EUC-KR(한글 엑셀) 형식을 지원합니다. 첫 줄은 헤더로 간주하여 건너뜁니다.</p>
+                   <p className="text-xs text-gray-500">UTF-8 또는 EUC-KR(한글 엑셀) 형식을 지원합니다. 첫 줄은 헤더로 간주하여 건너뜜니다.</p>
                 </div>
                 <hr className="border-gray-100" />
                 <LobbyView 
