@@ -8,7 +8,6 @@ import { GameMap } from './components/GameMap';
 import { Button } from './components/Button';
 
 // -- Assets --
-// Google Drive IDs provided by user
 const IMAGES = {
   QUIZ: "https://lh3.googleusercontent.com/d/1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4", // 지략의 시간 (퀴즈)
   ACTION: "https://lh3.googleusercontent.com/d/1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk", // 전쟁의 서막 (전략)
@@ -842,6 +841,19 @@ const App: React.FC = () => {
     reader.readAsArrayBuffer(file);
   };
 
+  const downloadSampleCSV = () => {
+      const csvContent = "문제,보기1,보기2,보기3,보기4,정답번호(1-4)\n대한민국의 수도는?,서울,부산,광주,대전,1";
+      const BOM = "\uFEFF";
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "quiz_sample.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
   const joinGame = () => {
     if (!joinName || !joinRoomCode) return;
     const id = `p-${Date.now()}`;
@@ -875,8 +887,15 @@ const App: React.FC = () => {
       {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'QUIZ') && <SubmissionStatusBoard players={gameState.players} phase={gameState.phase} />}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white p-4 rounded-xl shadow-sm">
-             <GameMap lands={gameState.lands} players={gameState.players} combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []} />
+          <div className="bg-white p-4 rounded-xl shadow-sm relative">
+             <div className="flex justify-between items-center mb-2 px-2 text-sm font-semibold text-gray-500">
+                <span>실시간 천하 지도</span>
+                <button onClick={() => setIsMapFullscreen(!isMapFullscreen)} className="text-indigo-600 underline">전체화면</button>
+             </div>
+             <div className={isMapFullscreen ? 'fixed inset-0 z-50 bg-gray-100 p-10 flex items-center justify-center' : ''}>
+                {isMapFullscreen && <button onClick={() => setIsMapFullscreen(false)} className="absolute top-5 right-5 bg-white p-2 rounded-full shadow-lg font-bold">닫기</button>}
+                <GameMap lands={gameState.lands} players={gameState.players} combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []} />
+             </div>
           </div>
           <div className="bg-white p-4 rounded-xl shadow-sm h-48 overflow-y-auto text-sm">
             <h3 className="font-bold mb-2 border-b pb-1 text-gray-700">실록 (게임 로그)</h3>
@@ -886,10 +905,28 @@ const App: React.FC = () => {
         <div className="space-y-4">
             <PlayerStatusTable players={gameState.players} phase={gameState.phase} />
             <div className="bg-white p-4 rounded-xl shadow-sm">
-                <h3 className="font-bold mb-4 text-indigo-800">게임 제어</h3>
+                <h3 className="font-bold mb-4 text-indigo-800">게임 설정 및 제어</h3>
                 {gameState.phase === 'LOBBY' && (
-                    <div className="space-y-4">
-                        <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-xs p-2 border rounded bg-gray-50" />
+                    <div className="space-y-6">
+                        <div className="bg-indigo-50 p-4 rounded-lg space-y-4">
+                            <div>
+                                <label className="text-sm font-bold text-indigo-900 block mb-1">방 코드 설정</label>
+                                <input type="text" className="w-full border p-2 rounded uppercase font-mono font-bold text-center" value={gameState.roomCode} onChange={e => setGameState({...gameState, roomCode: e.target.value.toUpperCase()})} disabled={!!peerRef.current} />
+                                {!peerRef.current && <Button onClick={() => initializeHost(gameState.roomCode)} className="w-full mt-2">방 생성 및 서버 시작</Button>}
+                            </div>
+                            <div>
+                                <label className="text-sm font-bold text-indigo-900 block mb-1">맵 크기 (땅 개수): {gameState.totalLands}</label>
+                                <input type="range" min="12" max="60" className="w-full" value={gameState.totalLands} onChange={e => setGameState({...gameState, totalLands: parseInt(e.target.value)})} />
+                            </div>
+                            <div>
+                                <label className="text-sm font-bold text-indigo-900 block mb-1">퀴즈 시간 (초): {gameState.quizDuration}</label>
+                                <input type="range" min="5" max="60" step="5" className="w-full" value={gameState.quizDuration} onChange={e => setGameState({...gameState, quizDuration: parseInt(e.target.value)})} />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center"><label className="text-sm font-semibold">퀴즈 파일 (CSV)</label><button onClick={downloadSampleCSV} className="text-xs text-blue-600 underline">샘플 다운로드</button></div>
+                            <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-xs p-2 border rounded bg-gray-50" />
+                        </div>
                         <LobbyView isHost={true} players={gameState.players} onStart={startGame} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={setTargetQuizCount} maxQuizzes={gameState.quizzes.length} />
                     </div>
                 )}
@@ -917,14 +954,14 @@ const App: React.FC = () => {
             <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-12 border-t-8 border-indigo-600">
                 <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-10 text-center text-white">
                     <h1 className="text-4xl font-extrabold mb-2">삼국지 땅따먹기</h1>
-                    <p className="opacity-80">지략과 전략의 천하통일 퀴즈 게임</p>
+                    <p className="opacity-80 font-medium">지략과 전략의 천하통일 퀴즈 게임</p>
                 </div>
                 <div className="p-8 space-y-6">
                     <Button onClick={() => setMode('HOST')} className="w-full py-4 text-lg" variant="secondary">👑 선생님(진행자)로 시작</Button>
-                    <div className="relative flex items-center"><div className="flex-grow border-t"></div><span className="px-3 text-gray-400 text-sm">학생 입장</span><div className="flex-grow border-t"></div></div>
+                    <div className="relative flex items-center"><div className="flex-grow border-t border-gray-200"></div><span className="px-3 text-gray-400 text-sm">학생 입장</span><div className="flex-grow border-t border-gray-200"></div></div>
                     <div className="space-y-3">
-                        <input type="text" placeholder="이름" className="w-full p-4 border rounded-xl font-bold" value={joinName} onChange={e => setJoinName(e.target.value)} />
-                        <input type="text" placeholder="방 코드" className="w-full p-4 border rounded-xl font-mono text-center text-xl uppercase" value={joinRoomCode} onChange={e => setJoinRoomCode(e.target.value.toUpperCase())} />
+                        <input type="text" placeholder="이름 (닉네임)" className="w-full p-4 border rounded-xl font-bold" value={joinName} onChange={e => setJoinName(e.target.value)} />
+                        <input type="text" placeholder="방 코드 (예: CLASS1)" className="w-full p-4 border rounded-xl font-mono text-center text-xl uppercase tracking-widest" value={joinRoomCode} onChange={e => setJoinRoomCode(e.target.value.toUpperCase())} />
                         <Button onClick={joinGame} className="w-full py-4 text-lg shadow-lg">전쟁터 입장하기</Button>
                     </div>
                 </div>
@@ -933,6 +970,17 @@ const App: React.FC = () => {
         {mode === 'HOST' && renderHostDashboard()}
         {mode === 'GUEST' && (
           <div className="max-w-4xl mx-auto">
+             {gameState.phase !== 'GAME_OVER' && (
+                <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border-l-4 border-indigo-500">
+                    <div className="flex items-center gap-3">
+                        <div className="font-bold text-gray-800">{gameState.players.find(p => p.id === myPlayerId)?.name || joinName}</div>
+                    </div>
+                    <div className="text-right">
+                         <div className="text-xs text-gray-500 font-bold">현재 라운드</div>
+                         <div className="font-mono font-bold text-indigo-600">{gameState.round} / {gameState.quizzes.length}</div>
+                    </div>
+                </div>
+             )}
             {gameState.phase === 'LOBBY' && <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={() => {}} maxQuizzes={gameState.quizzes.length} />}
             {gameState.phase === 'QUIZ' && <QuizView quiz={gameState.quizzes[gameState.currentQuizIndex]} timeRemaining={gameState.timer} isHost={false} onAnswer={submitAnswer} />}
             {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') && renderGuestDashboard()}
