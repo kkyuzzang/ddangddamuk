@@ -66,6 +66,45 @@ const PhaseVisual = ({ phase }: { phase: GamePhase }) => {
     );
 };
 
+const RoundReport = ({ events }: { events: CombatEvent[] }) => {
+    if (events.length === 0) return (
+        <div className="bg-white p-6 rounded-xl shadow-md text-center border-2 border-dashed border-gray-200">
+            <p className="text-gray-500 font-bold">이번 라운드에는 조용한 정세가 유지되었습니다.</p>
+        </div>
+    );
+
+    return (
+        <div className="bg-white rounded-xl shadow-md overflow-hidden border border-indigo-100">
+            <div className="bg-indigo-600 text-white px-4 py-3 font-bold text-center flex items-center justify-center gap-2">
+                <span>📜 이번 라운드 전쟁 보고서</span>
+            </div>
+            <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                {events.map((ev, i) => (
+                    <div key={i} className="px-4 py-3 flex items-center gap-3 hover:bg-indigo-50 transition-colors">
+                        <div className="text-2xl">
+                            {ev.type === 'CONQUERED' ? '⚔️' : ev.type === 'DEFENDED' ? '🛡️' : ev.type === 'PIERCED' ? '💥' : '💰'}
+                        </div>
+                        <div className="text-sm">
+                            {ev.type === 'CONQUERED' && (
+                                <p><span className="font-bold text-indigo-700">{ev.attackerName}</span> 군주가 <span className="font-bold text-gray-600">{ev.defenderName}</span>의 <span className="text-red-500 font-bold">{ev.landId + 1}번 성</span>을 점령했습니다!</p>
+                            )}
+                            {ev.type === 'DEFENDED' && (
+                                <p><span className="font-bold text-indigo-700">{ev.defenderName}</span> 군주가 <span className="font-bold text-gray-500">{ev.allAttackers?.join(', ')}</span>의 파상공세를 <span className="text-blue-600 font-bold">성공적으로 방어</span>했습니다.</p>
+                            )}
+                            {ev.type === 'PIERCED' && (
+                                <p><span className="text-red-600 font-bold">방어 관통!</span> <span className="font-bold text-gray-700">{ev.defenderName}</span>의 철벽 수비가 무너졌습니다.</p>
+                            )}
+                            {ev.type === 'BOUGHT' && (
+                                <p><span className="font-bold text-indigo-700">{ev.attackerName}</span> 군주가 풍부한 군자금으로 <span className="text-green-600 font-bold">빈 땅({ev.landId + 1}번)</span>을 매입했습니다.</p>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const SubmissionStatusBoard = ({ players, phase }: { players: Player[], phase: GamePhase }) => {
     const checkSubmitted = (p: Player) => {
         if (phase === 'QUIZ') return p.lastAnswerCorrect !== undefined;
@@ -149,12 +188,12 @@ const PlayerStatusTable = ({ players, phase }: { players: Player[], phase: GameP
                     <tbody className="divide-y divide-gray-100">
                         {players.map(p => {
                             let actionText = '-';
-                            if (phase === 'ACTION_SELECT' || phase === 'ROUND_RESULT') {
+                            if (phase === 'ACTION_SELECT') {
+                                actionText = p.selectedAction ? '✅ 제출 완료' : '⏳ 대기 중';
+                            } else if (phase === 'ROUND_RESULT') {
                                 if (p.selectedAction === 'DEFEND') actionText = '🛡️ 철벽 방어';
                                 else if (p.pendingAttacks.length > 0) actionText = `⚔️ 침공 (${p.pendingAttacks.length}곳)`;
                                 else if (p.pendingShop === 'BUY_LAND') actionText = '💰 영토 매입';
-                                else if (phase === 'ACTION_SELECT' && p.selectedAction) actionText = '✅ 제출 완료';
-                                else if (phase === 'ACTION_SELECT') actionText = '⏳ 고민 중...';
                                 else actionText = '대기중';
                             }
                             
@@ -690,13 +729,14 @@ const App: React.FC = () => {
         return { ...prev, players: updatedPlayers, lands: updatedLands, logs: [`${newPlayer.name}님이 재접속했습니다.`, ...prev.logs] };
       }
 
-      let assignedAvatar = newPlayer.avatar;
+      // Unique Avatar Assignment Logic
+      let assignedAvatar = "";
+      const usedAvatars = prev.players.map(p => p.avatar);
       if (prev.players.length < AVATARS.length) {
-          const usedAvatars = new Set(prev.players.map(p => p.avatar));
-          if (usedAvatars.has(assignedAvatar)) {
-              const available = AVATARS.filter(a => !usedAvatars.has(a));
-              if (available.length > 0) assignedAvatar = available[Math.floor(Math.random() * available.length)];
-          }
+          const availableAvatars = AVATARS.filter(a => !usedAvatars.includes(a));
+          assignedAvatar = availableAvatars[0];
+      } else {
+          assignedAvatar = AVATARS[prev.players.length % AVATARS.length];
       }
 
       let assignedColor = newPlayer.color;
@@ -770,7 +810,8 @@ const App: React.FC = () => {
   };
 
   const addTime = (seconds: number) => {
-      const newTime = gameStateRef.current.timer + seconds;
+      const currentT = gameStateRef.current.timer;
+      const newTime = currentT + seconds;
       setGameState(prev => ({ ...prev, timer: newTime }));
       if (timerCallbackRef.current) startTimer(newTime, timerCallbackRef.current);
   };
@@ -860,8 +901,8 @@ const App: React.FC = () => {
     const newPlayer: Player = { 
       id, 
       name: joinName, 
-      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)], 
-      color: COLORS[Math.floor(Math.random() * COLORS.length)], 
+      avatar: AVATARS[0], // Will be reassigned in handlePlayerJoin
+      color: COLORS[0], 
       coins: 0, 
       lands: [], 
       isEliminated: false, 
@@ -897,13 +938,19 @@ const App: React.FC = () => {
                 <GameMap lands={gameState.lands} players={gameState.players} combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []} />
              </div>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm h-48 overflow-y-auto text-sm">
-            <h3 className="font-bold mb-2 border-b pb-1 text-gray-700">실록 (게임 로그)</h3>
-            {gameState.logs.map((log, i) => <div key={i} className="border-b border-gray-50 py-1 text-gray-600">{log}</div>)}
-          </div>
+          {gameState.phase === 'ROUND_RESULT' ? (
+              <RoundReport events={gameState.lastRoundEvents} />
+          ) : (
+              <div className="bg-white p-4 rounded-xl shadow-sm h-48 overflow-y-auto text-sm">
+                <h3 className="font-bold mb-2 border-b pb-1 text-gray-700">실록 (게임 로그)</h3>
+                {gameState.logs.map((log, i) => <div key={i} className="border-b border-gray-50 py-1 text-gray-600">{log}</div>)}
+              </div>
+          )}
         </div>
         <div className="space-y-4">
-            <PlayerStatusTable players={gameState.players} phase={gameState.phase} />
+            {gameState.phase !== 'ROUND_RESULT' && (
+                <PlayerStatusTable players={gameState.players} phase={gameState.phase} />
+            )}
             <div className="bg-white p-4 rounded-xl shadow-sm">
                 <h3 className="font-bold mb-4 text-indigo-800">게임 설정 및 제어</h3>
                 {gameState.phase === 'LOBBY' && (
@@ -930,8 +977,24 @@ const App: React.FC = () => {
                         <LobbyView isHost={true} players={gameState.players} onStart={startGame} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={setTargetQuizCount} maxQuizzes={gameState.quizzes.length} />
                     </div>
                 )}
-                {gameState.phase === 'QUIZ' && <div className="text-center py-8"><div className="text-6xl font-black mb-4 text-indigo-600">{gameState.timer}</div><Button onClick={() => addTime(5)}>⏱️ +5초</Button></div>}
-                {gameState.phase === 'ACTION_SELECT' && <div className="text-center py-8"><div className="text-6xl font-black mb-4 text-red-600">{gameState.timer}</div><Button onClick={() => resolveRound()} variant="danger">결과 바로 보기</Button></div>}
+                {gameState.phase === 'QUIZ' && (
+                    <div className="text-center py-8 space-y-4">
+                        <div className="text-6xl font-black text-indigo-600">{gameState.timer}</div>
+                        <div className="flex gap-2">
+                            <Button className="flex-1" onClick={() => addTime(5)}>⏱️ +5초</Button>
+                            <Button className="flex-1" variant="danger" onClick={() => endQuizPhase()}>⏭️ 즉시 종료</Button>
+                        </div>
+                    </div>
+                )}
+                {gameState.phase === 'ACTION_SELECT' && (
+                    <div className="text-center py-8 space-y-4">
+                        <div className="text-6xl font-black text-red-600">{gameState.timer}</div>
+                        <div className="flex gap-2">
+                            <Button className="flex-1" onClick={() => addTime(5)}>⏱️ +5초</Button>
+                            <Button className="flex-1" variant="danger" onClick={() => resolveRound()}>⏭️ 즉시 완료</Button>
+                        </div>
+                    </div>
+                )}
                 {gameState.phase === 'ROUND_RESULT' && <div className="text-center py-8"><Button onClick={nextRound} className="w-full py-4 text-lg animate-bounce">다음 라운드 시작 ▶</Button></div>}
                 {gameState.phase === 'GAME_OVER' && <div className="text-center py-8"><Leaderboard players={gameState.players} /><Button onClick={() => window.location.reload()} className="mt-4">처음으로</Button></div>}
             </div>
@@ -943,7 +1006,24 @@ const App: React.FC = () => {
   const renderGuestDashboard = () => {
     const me = gameState.players.find(p => p.id === myPlayerId);
     if (!me) return null;
-    if (gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') return <div className="p-4"><PhaseVisual phase="ROUND_RESULT" /><Leaderboard players={gameState.players} myPlayerId={myPlayerId} /><GameMap lands={gameState.lands} players={gameState.players} myPlayerId={myPlayerId} combatEvents={gameState.lastRoundEvents} /></div>;
+    if (gameState.phase === 'ROUND_RESULT') {
+        return (
+            <div className="p-4 space-y-6">
+                <PhaseVisual phase="ROUND_RESULT" />
+                <RoundReport events={gameState.lastRoundEvents} />
+                <GameMap lands={gameState.lands} players={gameState.players} myPlayerId={myPlayerId} combatEvents={gameState.lastRoundEvents} />
+            </div>
+        );
+    }
+    if (gameState.phase === 'GAME_OVER') {
+        return (
+            <div className="p-4 space-y-6">
+                <PhaseVisual phase="GAME_OVER" />
+                <Leaderboard players={gameState.players} myPlayerId={myPlayerId} />
+                <GameMap lands={gameState.lands} players={gameState.players} myPlayerId={myPlayerId} combatEvents={gameState.lastRoundEvents} />
+            </div>
+        );
+    }
     return <GuestActionView me={me} gameState={gameState} myPlayerId={myPlayerId} actionLocked={actionLocked} selectedLandIds={selectedLandIds} toggleLandSelection={(id: number) => { if (actionLocked) return; const land = gameState.lands.find(l => l.id === id); if (!land || land.ownerId === myPlayerId || !land.ownerId) return; setSelectedLandIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id].slice(-(me.lastAnswerCorrect ? 2 : 1))); }} handleConfirmAttack={() => { setActionLocked(true); hostConnRef.current?.send({ type: 'PLAYER_ACTION', payload: { playerId: myPlayerId, type: 'STRATEGY', data: { action: 'ATTACK', targets: selectedLandIds, shopItem: pendingShopItem } } }); }} handleDefend={() => { setActionLocked(true); hostConnRef.current?.send({ type: 'PLAYER_ACTION', payload: { playerId: myPlayerId, type: 'STRATEGY', data: { action: 'DEFEND', targets: [], shopItem: pendingShopItem } } }); }} canDefend={me.lastAnswerCorrect} allowedAttacks={me.lastAnswerCorrect ? 2 : 1} onShopItemSelect={setPendingShopItem} pendingShopItem={pendingShopItem} prevQuiz={gameState.quizzes[gameState.currentQuizIndex]} />;
   };
 

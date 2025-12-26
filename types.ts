@@ -61,16 +61,16 @@ export interface BroadcastMessage {
 }
 
 export const AVATARS = [
-  "https://i.namu.wiki/i/OtjbF_gl1Kvfqxhz5H_0rtFeAuxM_fDzJPwgdpDJnAy0ja6l_i16nON3B4uarbB3QV1u8KCpgq6rsaeAXm2tFvRumlKdG0IgEx4iGsgirHAvkBvp0yH5fiDxlm_CmiyHiyl0XkbQOR-jWLRavKne-w.webp",
-  "https://i.namu.wiki/i/niaoFVaf219pcwp0UqIutZDgwYl0LiLgL1l3cOGnDHiBm5nWotoGXSoGa3t0gzPsxdmdQ22d4rpln4RLBR6ozWvm6TM43wLrsbYn640MUpT86v8XNR1kL4AIKXP0q2yEOJsoabdjXhF-dEs_0SaiHw.webp",
-  "https://i.namu.wiki/i/99QNadKAuNeiTnlUnua0p5Br16nVJOIOmh1Ocj8Sg6hsf7bz1zDMeZm1j6FAgwKW8wIfSaV3F6ndwu05PjT06qSvm8E0dYXVl73hbXZNZKrF5g4Vj5ncZrud2d0RrqvUJaw3zyPUSX46FThxTCepjg.webp",
-  "https://i.namu.wiki/i/i2xlbpdc1cZFZWMfKuDavAnQdUl8R1GmPrY0nUI1DBOuiFLrIhqGWiIt-GwuWlWej0cKXHHs5HgzpXyAoQbse17qXkA_a26b0voylpPTm8y6AkEjDDg1sFbHFp6ZkCfLA-h8TwemeTl81buwe7pY8g.webp",
-  "https://i.namu.wiki/i/I9gO9o9zdkBSiDNF3wkhfjclZRVLsI5aCKJfjXDWqvby-Ybcz9RJgiiPvLhB9flsLkI5MkxDEzfor8dK_18n-LOD4LMBdTExMc0guPEsPe7AhMuv_6HcogU24YgWYAK1rGejemFvEBUxmzipJXREkg.webp",
-  "https://i.namu.wiki/i/Rpd4ln04OR2oJ17Cxd1_1NtLBkd2WwGJ0uG94BlCmL-wTa_8Dr99nDzWftIRc8yd2muzzSZcNNMipKRzVycO9V0_Sjuls_-E9CmF-n1aYYIpo6tKJOxfrfqW231SAD8u_stdfXoMfm853hVjZG14ww.webp",
-  "https://i.namu.wiki/i/Dn387hHeKtWjQjlQCbRcYAZzLfQWhD07aH8rqOfq06KlZBA9zibdZ_C7B-7xklLpo3UA3SWtzOUfhTXeXPJfAQPIvuFEw6WCYpvdkCBLjuzdYAnp4a-ImCiNq6N11S2ZkH6HQXdA6O9E2R61ptlU6w.webp",
-  "https://i.namu.wiki/i/lDabLKcno7_hdIwUR8hB7iN413EJ5kYkvnZsGOoIhjW3oAS0kPLT6RZAmoV7K8ztkyEflipUkxLuymyxawEgknNt75MItyH59QWvwh4l85WNszEukHfW-udYjdmR-zMCdcjmXB2skkQ18ynSiqto7Q.webp",
-  "https://i.namu.wiki/i/Lc3VGCVUfaZ7q_u960p_b3lbhadQA5u5-GMS24E4JUVI6SaYMajmYB8MSU6YqOOdw4EmxEciVl05MXu6yP2uil3C1i-nefsR31GjjkOBlOE8-BaORAFvvilYCMwaXCm76Jhicamgwi3DKvB8JwZ6UQ.webp",
-  "https://i.namu.wiki/i/TpKYELoyfQeFWWa-pIwFVyw9GtalO5cOqDSUpiDvA5N36f8w3B0t3x3nO3SEo6-aTYrYI_LkGs0L-WDB5hj3NyUHsoIEvVYTAWE6XcJ3RTqcHeHsQT9m0OexMqbAA8Wp79rZwSGRWsr6SudDpz0tNw.webp"
+  "https://lh3.googleusercontent.com/d/1FHgOiNWDBEiHMG9uuE8C0h31ug-tDlT5",
+  "https://lh3.googleusercontent.com/d/1mm4XmcuQoUZWUxPCE4CqWctoGj2XU9xa",
+  "https://lh3.googleusercontent.com/d/1WRrHVRPQ7POtrnnHWeikrMoQ7hODX6uT",
+  "https://lh3.googleusercontent.com/d/19o9S2cq6pY3AzRFY3mCyiE1RobX5_3tu",
+  "https://lh3.googleusercontent.com/d/1CVLrRjEidQKPPWw1kx4zCg8WD996gKBi",
+  "https://lh3.googleusercontent.com/d/1NSzmCDfE7iM9fohk4UzW_lWFuDBDNhZ-",
+  "https://lh3.googleusercontent.com/d/1MGPZ7_DTILkzlCOZG9IvpgFgA0ROwYYX",
+  "https://lh3.googleusercontent.com/d/1JtoSrYxHNBAnIdd95eMDWBV17rPmXOn8",
+  "https://lh3.googleusercontent.com/d/1J_pTBN-i8fEWt9qmHQ1zXOJfWjCVtjGk",
+  "https://lh3.googleusercontent.com/d/1SXHTSA4hSj-s4USB3PG5nqwaD9mIJP1W"
 ];
 
 export const COLORS = [
