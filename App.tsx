@@ -8,14 +8,11 @@ import { GameMap } from './components/GameMap';
 import { Button } from './components/Button';
 
 // -- Assets --
-// Google Drive IDs extracted from your links:
-// 외교: 1pv6Owdj9mGBy0CGagJaa2qBoQ320w5Yi
-// 퀴즈: 1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4
-// 전략: 1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk
+// Google Drive IDs provided by user
 const IMAGES = {
-  QUIZ: "https://lh3.googleusercontent.com/d/1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4", 
-  ACTION: "https://lh3.googleusercontent.com/d/1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk", 
-  DIPLOMACY: "https://lh3.googleusercontent.com/d/1pv6Owdj9mGBy0CGagJaa2qBoQ320w5Yi" 
+  QUIZ: "https://lh3.googleusercontent.com/d/1MRKcqtXnqmsFeGN4w-ULPq6x4-ZoC2C4", // 지략의 시간 (퀴즈)
+  ACTION: "https://lh3.googleusercontent.com/d/1Okvxliz4Nfe7mKeCHIPDDt1989zoLVKk", // 전쟁의 서막 (전략)
+  DIPLOMACY: "https://lh3.googleusercontent.com/d/1pv6Owdj9mGBy0CGagJaa2qBoQ320w5Yi" // 천하 정세 (외교)
 };
 
 // -- Sub-Components --
@@ -401,7 +398,6 @@ const QuizView = ({ quiz, timeRemaining, isHost, onAnswer }: { quiz: Quiz, timeR
   );
 };
 
-// Extracted to avoid Hook Rules Violation in renderGuestDashboard
 const GuestActionView = ({ 
     me, 
     gameState, 
@@ -615,7 +611,7 @@ const App: React.FC = () => {
     try {
       const peer = new Peer(getPeerId(code), peerConfig);
       peer.on('open', () => {
-        setConnectionStatus('방 생성 완료!');
+        setConnectionStatus('방 생성 완료! 학생들이 입장할 수 있습니다.');
         peerRef.current = peer;
         startHeartbeat(true);
       });
@@ -630,7 +626,7 @@ const App: React.FC = () => {
         });
       });
       peer.on('error', (err: any) => {
-        if (err.type === 'unavailable-id') alert('사용 중인 코드입니다.');
+        if (err.type === 'unavailable-id') alert('이미 사용 중인 방 코드입니다.');
         setMode('MENU');
       });
       peerRef.current = peer;
@@ -692,7 +688,7 @@ const App: React.FC = () => {
         updatedPlayers[existingIdx] = { ...updatedPlayers[existingIdx], id: newId };
         const updatedLands = prev.lands.map(land => land.ownerId === oldId ? { ...land, ownerId: newId } : land);
         updatedPlayers[existingIdx].lands = updatedLands.filter(l => l.ownerId === newId).map(l => l.id);
-        return { ...prev, players: updatedPlayers, lands: updatedLands, logs: [`${newPlayer.name} 재접속`, ...prev.logs] };
+        return { ...prev, players: updatedPlayers, lands: updatedLands, logs: [`${newPlayer.name}님이 재접속했습니다.`, ...prev.logs] };
       }
 
       let assignedAvatar = newPlayer.avatar;
@@ -714,7 +710,7 @@ const App: React.FC = () => {
       }
       
       const playerToAdd = { ...newPlayer, avatar: assignedAvatar, color: assignedColor };
-      return { ...prev, players: [...prev.players, playerToAdd], logs: [`${playerToAdd.name} 입장`, ...prev.logs] };
+      return { ...prev, players: [...prev.players, playerToAdd], logs: [`${playerToAdd.name}님이 입장했습니다.`, ...prev.logs] };
     });
   };
 
@@ -741,10 +737,22 @@ const App: React.FC = () => {
   };
 
   const startGame = () => {
+    const selectedQuizzes = gameState.quizzes.slice(0, targetQuizCount);
     const lands = generateMap(gameState.totalLands);
     const resetPlayers = gameState.players.map(p => ({ ...p, lastAnswerCorrect: undefined, isEliminated: false, coins: 0, lands: [] }));
     const finalLands = assignInitialLands(lands, resetPlayers);
-    setGameState(prev => ({ ...prev, phase: 'QUIZ', players: resetPlayers, lands: finalLands, quizzes: prev.quizzes.slice(0, targetQuizCount), round: 1, currentQuizIndex: 0, timer: prev.quizDuration, lastRoundEvents: [] }));
+    setGameState(prev => ({ 
+      ...prev, 
+      phase: 'QUIZ', 
+      players: resetPlayers, 
+      lands: finalLands, 
+      quizzes: selectedQuizzes, 
+      round: 1, 
+      currentQuizIndex: 0, 
+      timer: prev.quizDuration, 
+      lastRoundEvents: [],
+      logs: ['📢 천하 통일 전쟁 시작!']
+    }));
     startTimer(gameState.quizDuration, () => endQuizPhase());
   };
 
@@ -755,7 +763,10 @@ const App: React.FC = () => {
     timerIntervalRef.current = setInterval(() => {
       timeLeft -= 1;
       setGameState(prev => ({ ...prev, timer: timeLeft }));
-      if (timeLeft <= 0) { clearInterval(timerIntervalRef.current!); onComplete(); }
+      if (timeLeft <= 0) { 
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          onComplete(); 
+      }
     }, 1000);
   };
 
@@ -783,15 +794,68 @@ const App: React.FC = () => {
     setGameState(prev => {
       const nextIdx = prev.currentQuizIndex + 1;
       if (nextIdx >= prev.quizzes.length) return { ...prev, phase: 'GAME_OVER' };
-      return { ...prev, players: prev.players.map(p => ({ ...p, lastAnswerCorrect: undefined, selectedAction: undefined, pendingAttacks: [], pendingShop: null })), phase: 'QUIZ', currentQuizIndex: nextIdx, round: prev.round + 1, timer: prev.quizDuration, lastRoundEvents: [] };
+      return { 
+        ...prev, 
+        players: prev.players.map(p => ({ ...p, lastAnswerCorrect: undefined, selectedAction: undefined, pendingAttacks: [], pendingShop: null })), 
+        phase: 'QUIZ', 
+        currentQuizIndex: nextIdx, 
+        round: prev.round + 1, 
+        timer: prev.quizDuration, 
+        lastRoundEvents: [],
+        logs: [`📢 제 ${prev.round + 1} 라운드 시작!`, ...prev.logs]
+      };
     });
     startTimer(gameState.quizDuration, () => endQuizPhase());
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const buffer = evt.target?.result as ArrayBuffer;
+      let text = '';
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+      } catch {
+        text = new TextDecoder('euc-kr').decode(buffer);
+      }
+      const lines = text.split('\n');
+      const newQuizzes: Quiz[] = [];
+      lines.slice(1).forEach((line, idx) => {
+        const cols = line.split(',');
+        if (cols.length >= 6) {
+          newQuizzes.push({
+            id: `csv-${idx}`,
+            question: cols[0].trim(),
+            options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
+            correctIndex: (parseInt(cols[5].trim()) || 1) - 1
+          });
+        }
+      });
+      if (newQuizzes.length > 0) {
+        setGameState(prev => ({ ...prev, quizzes: newQuizzes }));
+        setTargetQuizCount(newQuizzes.length);
+        alert(`${newQuizzes.length}개의 퀴즈를 불러왔습니다!`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const joinGame = () => {
     if (!joinName || !joinRoomCode) return;
     const id = `p-${Date.now()}`;
-    const newPlayer: Player = { id, name: joinName, avatar: AVATARS[0], color: COLORS[0], coins: 0, lands: [], isEliminated: false, pendingAttacks: [], isDefending: false };
+    const newPlayer: Player = { 
+      id, 
+      name: joinName, 
+      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)], 
+      color: COLORS[Math.floor(Math.random() * COLORS.length)], 
+      coins: 0, 
+      lands: [], 
+      isEliminated: false, 
+      pendingAttacks: [], 
+      isDefending: false 
+    };
     setMyPlayerId(id); setGameState(prev => ({ ...prev, roomCode: joinRoomCode })); setMode('GUEST');
     initializeGuest(joinRoomCode, newPlayer);
   };
@@ -801,9 +865,9 @@ const App: React.FC = () => {
   const renderHostDashboard = () => (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border-l-4 border-indigo-500">
-        <h1 className="text-2xl font-bold text-indigo-900">진행자 대시보드</h1>
+        <h1 className="text-2xl font-bold text-indigo-900">🏰 진행자 대시보드</h1>
         <div className="text-right">
-          <div className="text-xs text-gray-500">방 코드: {gameState.roomCode}</div>
+          <div className="text-xs text-gray-500">방 코드: <span className="font-mono font-bold text-indigo-600">{gameState.roomCode}</span></div>
           <div className="font-bold">라운드: {gameState.round} / {gameState.quizzes.length}</div>
         </div>
       </div>
@@ -815,15 +879,25 @@ const App: React.FC = () => {
              <GameMap lands={gameState.lands} players={gameState.players} combatEvents={gameState.phase === 'ROUND_RESULT' ? gameState.lastRoundEvents : []} />
           </div>
           <div className="bg-white p-4 rounded-xl shadow-sm h-48 overflow-y-auto text-sm">
-            {gameState.logs.map((log, i) => <div key={i} className="border-b py-1">{log}</div>)}
+            <h3 className="font-bold mb-2 border-b pb-1 text-gray-700">실록 (게임 로그)</h3>
+            {gameState.logs.map((log, i) => <div key={i} className="border-b border-gray-50 py-1 text-gray-600">{log}</div>)}
           </div>
         </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm h-full">
-            <h3 className="font-bold mb-4">제어</h3>
-            {gameState.phase === 'LOBBY' && <LobbyView isHost={true} players={gameState.players} onStart={startGame} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={setTargetQuizCount} maxQuizzes={gameState.quizzes.length} />}
-            {gameState.phase === 'QUIZ' && <div className="text-center py-8"><div className="text-6xl font-black mb-4">{gameState.timer}</div><Button onClick={() => addTime(5)}>⏱️ +5초</Button></div>}
-            {gameState.phase === 'ACTION_SELECT' && <div className="text-center py-8"><div className="text-6xl font-black mb-4">{gameState.timer}</div><Button onClick={() => resolveRound()}>결과 보기</Button></div>}
-            {gameState.phase === 'ROUND_RESULT' && <div className="text-center py-8"><Button onClick={nextRound} className="w-full">다음 라운드 시작 ▶</Button></div>}
+        <div className="space-y-4">
+            <PlayerStatusTable players={gameState.players} phase={gameState.phase} />
+            <div className="bg-white p-4 rounded-xl shadow-sm">
+                <h3 className="font-bold mb-4 text-indigo-800">게임 제어</h3>
+                {gameState.phase === 'LOBBY' && (
+                    <div className="space-y-4">
+                        <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-xs p-2 border rounded bg-gray-50" />
+                        <LobbyView isHost={true} players={gameState.players} onStart={startGame} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={setTargetQuizCount} maxQuizzes={gameState.quizzes.length} />
+                    </div>
+                )}
+                {gameState.phase === 'QUIZ' && <div className="text-center py-8"><div className="text-6xl font-black mb-4 text-indigo-600">{gameState.timer}</div><Button onClick={() => addTime(5)}>⏱️ +5초</Button></div>}
+                {gameState.phase === 'ACTION_SELECT' && <div className="text-center py-8"><div className="text-6xl font-black mb-4 text-red-600">{gameState.timer}</div><Button onClick={() => resolveRound()} variant="danger">결과 바로 보기</Button></div>}
+                {gameState.phase === 'ROUND_RESULT' && <div className="text-center py-8"><Button onClick={nextRound} className="w-full py-4 text-lg animate-bounce">다음 라운드 시작 ▶</Button></div>}
+                {gameState.phase === 'GAME_OVER' && <div className="text-center py-8"><Leaderboard players={gameState.players} /><Button onClick={() => window.location.reload()} className="mt-4">처음으로</Button></div>}
+            </div>
         </div>
       </div>
     </div>
@@ -837,27 +911,44 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 font-sans text-gray-900">
       <div className="container mx-auto px-4 py-8">
-        {mode === 'MENU' && <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-12"><div className="bg-indigo-600 p-10 text-center text-white"><h1 className="text-3xl font-bold">삼국지 땅따먹기</h1></div><div className="p-8 space-y-6"><Button onClick={() => setMode('HOST')} className="w-full" variant="secondary">👑 선생님(진행자) 시작</Button><div className="space-y-3"><input type="text" placeholder="이름" className="w-full p-4 border rounded-xl" value={joinName} onChange={e => setJoinName(e.target.value)} /><input type="text" placeholder="방 코드" className="w-full p-4 border rounded-xl" value={joinRoomCode} onChange={e => setJoinRoomCode(e.target.value.toUpperCase())} /><Button onClick={joinGame} className="w-full">전쟁터 입장</Button></div></div></div>}
+        {mode === 'MENU' && (
+            <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-12 border-t-8 border-indigo-600">
+                <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-10 text-center text-white">
+                    <h1 className="text-4xl font-extrabold mb-2">삼국지 땅따먹기</h1>
+                    <p className="opacity-80">지략과 전략의 천하통일 퀴즈 게임</p>
+                </div>
+                <div className="p-8 space-y-6">
+                    <Button onClick={() => setMode('HOST')} className="w-full py-4 text-lg" variant="secondary">👑 선생님(진행자)로 시작</Button>
+                    <div className="relative flex items-center"><div className="flex-grow border-t"></div><span className="px-3 text-gray-400 text-sm">학생 입장</span><div className="flex-grow border-t"></div></div>
+                    <div className="space-y-3">
+                        <input type="text" placeholder="이름" className="w-full p-4 border rounded-xl font-bold" value={joinName} onChange={e => setJoinName(e.target.value)} />
+                        <input type="text" placeholder="방 코드" className="w-full p-4 border rounded-xl font-mono text-center text-xl uppercase" value={joinRoomCode} onChange={e => setJoinRoomCode(e.target.value.toUpperCase())} />
+                        <Button onClick={joinGame} className="w-full py-4 text-lg shadow-lg">전쟁터 입장하기</Button>
+                    </div>
+                </div>
+            </div>
+        )}
         {mode === 'HOST' && renderHostDashboard()}
         {mode === 'GUEST' && (
-          <div>
+          <div className="max-w-4xl mx-auto">
             {gameState.phase === 'LOBBY' && <LobbyView isHost={false} players={gameState.players} onStart={() => {}} roomCode={gameState.roomCode} connectionStatus={connectionStatus} totalQuizzes={targetQuizCount} setTotalQuizzes={() => {}} maxQuizzes={gameState.quizzes.length} />}
             {gameState.phase === 'QUIZ' && <QuizView quiz={gameState.quizzes[gameState.currentQuizIndex]} timeRemaining={gameState.timer} isHost={false} onAnswer={submitAnswer} />}
             {(gameState.phase === 'ACTION_SELECT' || gameState.phase === 'ROUND_RESULT' || gameState.phase === 'GAME_OVER') && renderGuestDashboard()}
           </div>
         )}
-        <div className="mt-12 border-t pt-6 text-center text-sm text-gray-500 pb-8">
-            <p className="font-bold mb-2">만든 사람: 경기도 지구과학 교사 뀨짱</p>
-            <div className="flex justify-center gap-3">
-                <span>문의: <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">카카오톡 오픈채팅</a></span>
-                <span>|</span>
-                <span>블로그: <a href="https://eduarchive.tistory.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">뀨짱쌤의 교육자료 아카이브</a></span>
+        <div className="mt-12 border-t border-gray-200 pt-6 text-center text-sm text-gray-500 pb-8">
+            <p className="font-bold mb-2 text-gray-700">만든 사람: 경기도 지구과학 교사 뀨짱</p>
+            <div className="flex justify-center items-center gap-3 flex-wrap">
+                <span>문의: <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800 transition">카카오톡 오픈채팅</a></span>
+                <span className="text-gray-300">|</span>
+                <span>블로그: <a href="https://eduarchive.tistory.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800 transition">뀨짱쌤의 교육자료 아카이브</a></span>
             </div>
         </div>
       </div>
     </div>
   );
 };
+
 export default App;
